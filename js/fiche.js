@@ -66,12 +66,13 @@ export function renderFiche(root, chantier, opt) {
   <article class="page">
     <header class="f-head">
       <div>
-        <div class="f-kicker">FICHE DE SECOURS · CHANTIER FORESTIER</div>
+        <div class="f-kicker">ORGANISATION DE CHANTIER · FICHE DE SECOURS</div>
         <input class="f-title" data-key="name" value="${esc(info.name || '')}" placeholder="Nom du chantier">
       </div>
       <div class="f-head-right">
         ${field('date', 'Date', { type: 'date' })}
       </div>
+      <img src="img/logo-triage.jpg" alt="Triage forestier du Vallon" class="f-logo">
     </header>
 
     <section class="f-cols">

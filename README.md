@@ -1,6 +1,6 @@
-# Relevé Forestier 🌲
+# Organisation de chantier 🌲
 
-Application web (PWA) pour forestiers-bûcherons en Suisse : relevés de parcelles, plans de coupe
+Application web (PWA) du Triage forestier du Vallon pour forestiers-bûcherons en Suisse : relevés de parcelles, plans de coupe
 et fiches de sécurité, sur les fonds de carte officiels de **swisstopo / geo.admin.ch**.
 Elle fonctionne sur smartphone, tablette et ordinateur, **aussi hors-ligne en forêt**.
 

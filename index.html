@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-  <title>Relevé Forestier</title>
-  <meta name="description" content="Plan de coupe et fiche de secours pour chantiers forestiers, sur les cartes swisstopo.">
+  <title>Organisation de chantier</title>
+  <meta name="description" content="Organisation de chantier forestier : plan de coupe et fiche de secours sur les cartes swisstopo. Triage forestier du Vallon.">
   <meta name="theme-color" content="#1f4d2b">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-title" content="Org. chantier">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
@@ -57,7 +58,7 @@
 
   <dialog id="dlg-chantiers" class="dialog">
     <form method="dialog">
-      <header><h2>Mes chantiers</h2></header>
+      <header class="brand-head"><img src="img/logo-triage.jpg" alt="Triage forestier du Vallon" class="brand-logo"><div><div class="brand-title">Organisation de chantier</div><h2>Mes chantiers</h2></div></header>
       <div class="dialog-body"><ul id="chantier-list" class="chantier-list"></ul></div>
       <footer>
         <button type="button" id="btn-new-chantier" class="primary big">+ Nouveau chantier</button>

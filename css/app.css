@@ -284,3 +284,8 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .sym-tag.tag-zone span { font-size: 12px; border-width: 2px; border-radius: 4px; background: rgba(255,255,255,.92); }
 .lg-zone { display: inline-block; width: 18px; height: 12px; border: 2px dashed; }
 .f-legend svg { max-width: 34px; height: auto; }
+.brand-head { display: flex; align-items: center; gap: 12px; }
+.brand-logo { height: 54px; width: auto; }
+.brand-title { font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.f-logo { height: 20mm; width: auto; margin-left: 4mm; align-self: center; }
+@media (max-width: 600px) { .f-logo { height: 56px; } }
