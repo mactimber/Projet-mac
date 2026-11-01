@@ -705,6 +705,18 @@ async function openFiche() {
     },
     onClose: closeFiche,
     makeBaseLayer: () => makeBase(layerState.base),
+    // Couches « découvertes » cochées (zones S…) : reprises sur le plan de la fiche, avec leur légende
+    extraLayers: () => OVERLAYS.filter((o) => o.discover && layerState.overlays.includes(o.id) && discovered[o.id]).map((o) => {
+      const cfg = discovered[o.id];
+      return {
+        label: o.label,
+        legends: cfg.legends || [],
+        layer: L.tileLayer.wms(cfg.url, {
+          layers: cfg.layers, format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512,
+          maxZoom: 21, opacity: o.opacity, attribution: cfg.attribution,
+        }),
+      };
+    }),
   });
   window.scrollTo(0, 0);
 }

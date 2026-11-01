@@ -57,7 +57,7 @@ let ficheMap = null;
 /**
  * @param {HTMLElement} root
  * @param {object} chantier
- * @param {object} opt { onChange(), onClose(), makeBaseLayer() }
+ * @param {object} opt { onChange(), onClose(), makeBaseLayer(), extraLayers() }
  */
 export function renderFiche(root, chantier, opt) {
   const info = chantier.info;
@@ -100,6 +100,8 @@ export function renderFiche(root, chantier, opt) {
       <input data-key="${key}" value="${esc(info[key] ?? point?.place ?? point?.text ?? '')}" placeholder="${esc(ph)}">
       ${point?.place ? `<button type="button" class="f-refresh no-print" data-refresh="${key}" data-place="${esc(point.place)}" title="Reprendre depuis la carte" aria-label="Reprendre depuis la carte">↻</button>` : ''}
     </div></div>`;
+
+  const extras = opt.extraLayers ? opt.extraLayers() : [];
 
   root.innerHTML = `
   <div class="fiche-bar no-print">
@@ -211,6 +213,9 @@ export function renderFiche(root, chantier, opt) {
         <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
         <div class="f-ratio" id="f-ratio"></div>
       </div>
+      ${extras.map((x) => `<div class="f-legend f-legend-extra"><b>${esc(x.label)} :</b>
+        ${x.legends.map((l) => `<span class="lg-img"><img src="${esc(l.url)}" alt="">${l.title && !/^\d+$/.test(l.title) ? esc(l.title) : ''}</span>`).join('')}
+      </div>`).join('')}
       <div class="f-legend">
         <b>Légende :</b>
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
@@ -313,6 +318,7 @@ export function renderFiche(root, chantier, opt) {
   });
   ficheMap.attributionControl.setPrefix(false);
   opt.makeBaseLayer().addTo(ficheMap);
+  extras.forEach((x) => x.layer.addTo(ficheMap));
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(ficheMap);
   if (chantier.parcel) {
     L.polygon(chantier.parcel, PARCEL_STYLE_OUTLINE).addTo(ficheMap);

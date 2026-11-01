@@ -351,3 +351,7 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .ov-legend-box .lg-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 14px; }
 .ov-legend-box img { max-width: 100%; height: auto; }
 .ov-legend-box .lg-row span:empty { display: none; }
+.f-legend-extra { border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 2px; }
+.f-legend .lg-img { display: inline-flex; align-items: center; gap: 4px; }
+.f-legend .lg-img img { max-height: 22px; width: auto; }
+.print-layout .f-legend .lg-img img { max-height: 18px; }
