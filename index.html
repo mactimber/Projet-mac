@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fr-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Relevé Forestier</title>
+  <meta name="description" content="Relevés de parcelles, fiches de sécurité et plans de coupe sur les cartes swisstopo.">
+  <meta name="theme-color" content="#1f4d2b">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="vendor/geoman/leaflet-geoman.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="btn-menu" title="Panneau" aria-label="Ouvrir le panneau">☰</button>
+    <button class="chantier-title" id="btn-chantiers" title="Changer de chantier">
+      <span id="chantier-name">Chantier</span> <span class="caret">▾</span>
+    </button>
+    <form class="search" id="search-form" autocomplete="off">
+      <input type="search" id="search-input" placeholder="Lieu, adresse, parcelle, coord. LV95…" aria-label="Rechercher">
+      <ul class="search-results" id="search-results" hidden></ul>
+    </form>
+    <button class="icon-btn" id="btn-report" title="Rapport imprimable" aria-label="Rapport">🖨</button>
+  </header>
+
+  <main class="layout">
+    <aside class="panel" id="panel" aria-label="Panneau latéral">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="chantier" class="active">Chantier</button>
+        <button role="tab" data-tab="securite">Sécurité</button>
+        <button role="tab" data-tab="coupe">Coupe</button>
+        <button role="tab" data-tab="couches">Couches</button>
+      </nav>
+      <div class="panel-body">
+        <section data-panel="chantier" class="active">
+          <div id="form-chantier"></div>
+          <h3>Résumé</h3>
+          <div id="chantier-summary" class="summary"></div>
+          <h3>Objets relevés</h3>
+          <ul id="feature-list" class="feature-list"></ul>
+          <h3>Données</h3>
+          <div class="btn-row">
+            <button id="btn-export-geojson">Export GeoJSON (WGS84)</button>
+            <button id="btn-export-lv95">Export GeoJSON (LV95)</button>
+            <button id="btn-export-kml">Export KML</button>
+            <button id="btn-export-backup">Sauvegarde complète (.json)</button>
+            <label class="btn">Importer…<input type="file" id="input-import" accept=".json,.geojson,application/json" hidden></label>
+          </div>
+        </section>
+        <section data-panel="securite">
+          <p class="hint">Fiche à remplir avant le début des travaux et à communiquer à toute l'équipe.</p>
+          <div id="form-securite"></div>
+        </section>
+        <section data-panel="coupe">
+          <div id="form-coupe"></div>
+          <h3>Arbres martelés</h3>
+          <div id="coupe-table"></div>
+          <h3>Récapitulatif par essence</h3>
+          <div id="coupe-recap"></div>
+        </section>
+        <section data-panel="couches">
+          <h3>Fond de carte</h3>
+          <div id="base-layers" class="layer-list"></div>
+          <h3>Couches superposées <small>(geo.admin.ch)</small></h3>
+          <div id="overlay-layers" class="layer-list"></div>
+          <details class="custom-layer">
+            <summary>Ajouter une couche geo.admin par son identifiant</summary>
+            <p class="hint">Copiez l'identifiant technique depuis map.geo.admin.ch (ex. <code>ch.bafu.waldreservate</code>).</p>
+            <form id="custom-layer-form" class="inline-form">
+              <input id="custom-layer-id" placeholder="ch.xxx.yyy" required pattern="[a-z0-9_.\-]+">
+              <input id="custom-layer-label" placeholder="Nom affiché">
+              <button type="submit">Ajouter</button>
+            </form>
+          </details>
+          <h3>Hors-ligne</h3>
+          <p class="hint">Téléchargez les cartes de la zone visible avant de partir en forêt (couches actives, jusqu'à 3 niveaux de zoom de plus).</p>
+          <div class="btn-row">
+            <button id="btn-offline-download">Télécharger la zone visible</button>
+            <button id="btn-offline-clear" class="secondary">Vider le cache des cartes</button>
+          </div>
+          <progress id="offline-progress" max="100" value="0" hidden></progress>
+          <p id="offline-status" class="hint"></p>
+        </section>
+      </div>
+    </aside>
+
+    <div class="map-wrap">
+      <div id="map"></div>
+
+      <div class="map-controls right">
+        <button class="fab" id="btn-locate" title="Ma position" aria-label="Ma position">◎</button>
+        <button class="fab" id="btn-track" title="Relevé du périmètre au GPS" aria-label="Relevé GPS">👣</button>
+        <button class="fab" id="btn-info" title="Infos d'un point (coordonnées, altitude)" aria-label="Infos point">ⓘ</button>
+      </div>
+
+      <div class="coords" id="coords">LV95 —</div>
+
+      <div class="gps-recorder" id="gps-recorder" hidden>
+        <div class="gps-rec-head"><span class="rec-dot"></span> Relevé GPS en cours</div>
+        <div id="gps-rec-stats" class="gps-rec-stats">0 points · précision —</div>
+        <label class="gps-auto"><input type="checkbox" id="gps-auto" checked> Ajout auto. tous les <input type="number" id="gps-auto-dist" value="5" min="1" max="50" step="1"> m</label>
+        <div class="btn-row">
+          <button id="gps-add-point">+ Point ici</button>
+          <button id="gps-undo" class="secondary">Annuler dernier</button>
+        </div>
+        <div class="btn-row">
+          <button id="gps-finish-polygon">Terminer → surface</button>
+          <button id="gps-finish-line" class="secondary">Terminer → ligne</button>
+          <button id="gps-cancel" class="danger">Abandonner</button>
+        </div>
+      </div>
+
+      <nav class="toolbar" id="toolbar" aria-label="Outils de relevé"></nav>
+    </div>
+  </main>
+
+  <dialog id="dlg-feature" class="dialog">
+    <form method="dialog" id="feature-form-wrap">
+      <header><h2 id="dlg-feature-title">Objet</h2></header>
+      <div id="feature-form" class="dialog-body"></div>
+      <footer class="btn-row">
+        <button value="delete" class="danger" id="dlg-feature-delete">Supprimer</button>
+        <span class="spacer"></span>
+        <button value="ok" class="primary">OK</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-chantiers" class="dialog">
+    <form method="dialog">
+      <header><h2>Mes chantiers</h2></header>
+      <div class="dialog-body">
+        <ul id="chantier-list" class="chantier-list"></ul>
+      </div>
+      <footer class="btn-row">
+        <button type="button" id="btn-new-chantier" class="primary">+ Nouveau chantier</button>
+        <span class="spacer"></span>
+        <button value="close">Fermer</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-info" class="dialog">
+    <form method="dialog">
+      <header><h2>Informations du point</h2></header>
+      <div class="dialog-body" id="info-body"></div>
+      <footer class="btn-row"><span class="spacer"></span><button value="close">Fermer</button></footer>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/geoman/leaflet-geoman.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
