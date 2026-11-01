@@ -40,8 +40,9 @@ const POINT_SVG = {
   camion_grue: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#1b5e86" stroke="#111" stroke-width="2.5"/>
     <g fill="#fff"><rect x="7" y="22" width="19" height="5.5" rx="1"/><path d="M26 27.5V18h4.5l3 4.5v5z"/><circle cx="11.5" cy="29.5" r="2.4"/><circle cx="29.5" cy="29.5" r="2.4"/></g>
     <path d="M12 22L28 9.5M28 9.5v6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>`],
-  pile: [60, 32, `<path d="M2 2L57 5.5L58 25L4 30Z" fill="#4e3418" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/>
-    <path d="M3 3L57.4 15.2L4.6 29" stroke="#e8e8e8" stroke-width="1.6" stroke-linejoin="round" fill="none"/>`],
+  // Trois triangles bruns identiques, emboîtés en zigzag (▶ ◀ ▶)
+  pile: [60, 32, `<g fill="#4e3418" stroke="#111" stroke-width="1.3" stroke-linejoin="round">
+    <path d="M2 1L58 3.5L2 13Z"/><path d="M58 6L58 26L4 16Z"/><path d="M2 19L58 28.5L2 31Z"/></g>`],
   depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
