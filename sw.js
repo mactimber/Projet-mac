@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne + cache des tuiles cartographiques.
 
-const APP_CACHE = 'rf-app-v26';
+const APP_CACHE = 'rf-app-v27';
 const TILE_CACHE = 'rf-tiles-v1';
 const MAX_RUNTIME_TILES = 6000;
 
@@ -14,6 +14,8 @@ const APP_FILES = [
   'js/draw.js',
   'js/fiche.js',
   'js/place.js',
+  'js/share.js',
+  'vendor/qrcode/qrcode.js',
   'js/swiss.js',
   'js/symbols.js',
   'vendor/leaflet/leaflet.js',

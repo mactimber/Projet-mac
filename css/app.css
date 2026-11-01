@@ -327,7 +327,7 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .print-layout .f-work { grid-template-columns: 1fr 1fr; }
 .print-layout .f-sec { margin: 6px 0 4px; font-size: 14px; }
 .print-layout .page .ff-multi textarea { min-height: 13mm; }
-.print-layout .page-plan #fiche-map { height: 232mm; min-height: 0; }
+.print-layout .page-plan #fiche-map { height: 214mm; min-height: 0; }
 .print-layout .page-plan .f-legend svg { height: 17px; }
 .print-layout .page-plan .f-legend { font-size: 11.5px; }
 .print-layout .page + .page { margin-top: 0; }
@@ -386,3 +386,18 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .print-layout .page .ff-multi textarea { min-height: 11mm; }
 .f-recadrer { position: absolute; top: 8px; left: 8px; z-index: 600; min-height: 0; padding: 4px 10px; font-size: 13px; background: #fff; border: 1.5px solid #333; border-radius: 6px; }
 .print-layout .f-recadrer { display: none; }
+/* QR code du plan */
+.f-qr { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 10px; line-height: 1.2; color: #333; }
+.f-qr #f-qr-img svg { width: 26mm; height: 26mm; display: block; }
+.f-head-small { align-items: center; }
+/* Mode lecture (plan ouvert depuis un QR code) */
+body.viewer .steps, body.viewer #sheet, body.viewer #hint-bar, body.viewer #btn-chantiers, body.viewer .search { display: none !important; }
+body.viewer #map { bottom: 0; }
+.viewer-bar {
+  position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 1200;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #fff; border-radius: 14px; box-shadow: var(--shadow); font-size: 15px;
+}
+.viewer-bar > div { flex: 1; }
+.viewer-bar #viewer-pos { font-size: 14px; color: #333; margin-top: 2px; }
+.viewer-bar .ok { color: var(--green-2); }
+.print-layout .f-qr #f-qr-img svg { width: 28mm; height: 28mm; }

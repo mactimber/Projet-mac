@@ -3,6 +3,7 @@
 import { SYMBOLS, SYMBOL_BY_KIND, symbolSvg } from './symbols.js';
 import { symbolLayer, esc, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
 import { wgs84ToLV95, polygonArea, formatArea } from './swiss.js';
+import { planLink, qrSvg } from './share.js';
 
 /** Contacts habituels du Triage forestier du Vallon. */
 export const DEFAUT_MEDECIN = 'Dr P. Candelier – 027 458 31 81';
@@ -265,6 +266,7 @@ export function renderFiche(root, chantier, opt) {
         <div class="f-kicker">ORGANISATION DE CHANTIER · PLAN DE COUPE</div>
         <div class="f-title-small">${esc(info.name || '')}${area ? ` <small>· parcelle ${esc(area)}</small>` : ''}</div>
       </div>
+      <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position<br>sur ce plan</span></div>
       <img src="img/logo-triage.jpg" alt="" class="f-logo f-logo-small">
     </header>
     <section class="f-plan">
@@ -332,6 +334,17 @@ export function renderFiche(root, chantier, opt) {
   });
   root.querySelector('#resp-nom').addEventListener('input', updateCall);
   root.querySelector('[data-key="resp_tel"]').addEventListener('input', updateCall);
+
+  // QR code du plan (le plan est contenu dans le lien)
+  planLink(chantier).then((url) => {
+    if (!url) return;
+    try {
+      root.querySelector('#f-qr-img').innerHTML = qrSvg(url);
+      root.querySelector('#f-qr').hidden = false;
+    } catch (e) {
+      console.warn('QR', e); // plan trop grand pour un QR code
+    }
+  });
 
   root.querySelectorAll('[data-refresh]').forEach((b) => b.addEventListener('click', () => {
     const input = root.querySelector(`[data-key="${b.dataset.refresh}"]`);

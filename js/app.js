@@ -6,6 +6,7 @@ import { SYMBOLS, SYMBOL_BY_KIND, GROUPS, ZONE_COLORS, symbolSvg } from './symbo
 import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
 import { renderFiche, closeFicheMap, getResponsables, setResponsables } from './fiche.js';
 import { lookupPlace } from './place.js';
+import { readPlan } from './share.js';
 import { wgs84ToLV95, formatLV95, parseCoordinates, polygonArea, formatArea, parcelCenter, pathLength, formatLength } from './swiss.js';
 
 const $ = (s) => document.querySelector(s);
@@ -785,6 +786,7 @@ function onFix(pos) {
     gpsDot.setLatLng(ll);
     gpsCircle.setLatLng(ll).setRadius(acc);
   }
+  if (viewer) return viewer.onFix(ll, acc, first);
   if (first || follow) map.setView(ll, first ? Math.max(map.getZoom(), 17) : map.getZoom(), { animate: !first });
   if (recorder.active) recorder.onFix(lastFix);
 }
@@ -1051,7 +1053,84 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   }).catch(() => {});
 }
 
+/* ------------------------------------------------------------------ */
+/* Plan partagé par QR code (lecture seule, avec position GPS)          */
+/* ------------------------------------------------------------------ */
+
+let viewer = null;
+
+const CAPS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+/** Où est la personne par rapport à la parcelle (calcul en LV95). */
+function situation(ll, ring) {
+  const P = wgs84ToLV95(ll.lat, ll.lng);
+  const pts = ring.map(([lat, lng]) => wgs84ToLV95(lat, lng));
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i], b = pts[j];
+    if ((a.N > P.N) !== (b.N > P.N) && P.E < ((b.E - a.E) * (P.N - a.N)) / (b.N - a.N) + a.E) inside = !inside;
+  }
+  if (inside) return { inside: true };
+  let best = null;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const dx = b.E - a.E, dy = b.N - a.N;
+    const t = Math.max(0, Math.min(1, ((P.E - a.E) * dx + (P.N - a.N) * dy) / (dx * dx + dy * dy || 1)));
+    const q = { E: a.E + t * dx, N: a.N + t * dy };
+    const d = Math.hypot(q.E - P.E, q.N - P.N);
+    if (!best || d < best.d) best = { d, q };
+  }
+  const cap = ((Math.atan2(best.q.E - P.E, best.q.N - P.N) * 180) / Math.PI + 360) % 360;
+  return { inside: false, d: best.d, dir: CAPS[Math.round(cap / 45) % 8] };
+}
+
+async function openViewer(plan) {
+  document.body.classList.add('viewer');
+  $('#chantier-name').textContent = plan.info.name || 'Plan de coupe';
+  const g = L.featureGroup().addTo(map);
+  if (plan.parcel) {
+    L.polygon(plan.parcel, PARCEL_STYLE_OUTLINE).addTo(g);
+    L.polygon(plan.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(g);
+  }
+  for (const s of plan.symbols) symbolLayer(s, { interactive: false })?.addTo(g);
+  if (g.getLayers().length) map.fitBounds(g.getBounds().pad(0.15));
+  const bar = document.createElement('div');
+  bar.className = 'viewer-bar';
+  bar.innerHTML = `<div><b>Plan de coupe</b> · lecture seule<div id="viewer-pos">Recherche de votre position GPS…</div></div>
+    <button type="button" id="viewer-exit">Quitter</button>`;
+  document.body.appendChild(bar);
+  $('#viewer-exit').addEventListener('click', () => {
+    location.hash = '';
+    location.reload();
+  });
+  viewer = {
+    onFix(ll, acc, first) {
+      if (first) map.fitBounds(g.getBounds().extend(ll).pad(0.15));
+      else if (follow) map.panTo(ll);
+      let txt = `Précision ±${Math.round(acc)} m`;
+      if (plan.parcel) {
+        const r = situation(ll, plan.parcel);
+        txt = r.inside
+          ? `<b class="ok">Vous êtes dans la parcelle</b> · ${txt}`
+          : `Parcelle à <b>${r.d >= 1000 ? `${(r.d / 1000).toFixed(1)} km` : `${Math.round(r.d)} m`}</b> direction <b>${r.dir}</b> · ${txt}`;
+      }
+      $('#viewer-pos').innerHTML = txt;
+    },
+  };
+  follow = false;
+  startGps();
+  follow = false;
+}
+
 (async () => {
+  if (/plan=/.test(location.hash)) {
+    try {
+      const plan = await readPlan(location.hash);
+      if (plan) return openViewer(plan);
+    } catch (e) {
+      console.error(e);
+      alert('Ce QR code ne contient pas un plan lisible.');
+    }
+  }
   const id = localStorage.getItem(ACTIVE);
   let c = id && (await db.get(id));
   if (!c) c = (await db.list()).sort((a, b) => (b.updated || '').localeCompare(a.updated || ''))[0];
