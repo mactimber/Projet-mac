@@ -346,3 +346,8 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .print-layout #resp-select { appearance: none; -webkit-appearance: none; }
 .overlay-choice .ov-name { flex: 1; }
 .overlay-choice .ov-legend { font-size: 12px; color: var(--muted); padding: 4px 6px; }
+.overlay-choice button.ov-legend { min-height: 0; border: 0; background: none; text-decoration: underline; }
+.ov-legend-box { background: var(--bg-2); border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
+.ov-legend-box .lg-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 14px; }
+.ov-legend-box img { max-width: 100%; height: auto; }
+.ov-legend-box .lg-row span:empty { display: none; }

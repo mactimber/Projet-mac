@@ -73,22 +73,45 @@ async function discoverWms(url) {
   const xml = new DOMParser().parseFromString(await r.text(), 'text/xml');
   const kids = (el, tag) => [...el.children].filter((c) => c.localName === tag);
   const text = (el, tag) => kids(el, tag)[0]?.textContent?.trim() || '';
+  const legendHref = (layer) => {
+    for (const st of kids(layer, 'Style')) {
+      const lu = kids(st, 'LegendURL')[0];
+      const res = lu && kids(lu, 'OnlineResource')[0];
+      const href = res?.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || res?.getAttribute('xlink:href');
+      if (href) return href;
+    }
+    return '';
+  };
+  const graphic = (name) => `${url}?SERVICE=WMS&REQUEST=GetLegendGraphic&VERSION=1.3.0&FORMAT=image/png&SLD_VERSION=1.1.0&LAYER=${encodeURIComponent(name)}`;
+  /** Légendes d'une couche et de ses sous-couches (titre + image) */
+  const legendsOf = (layer) => {
+    const subs = kids(layer, 'Layer');
+    if (subs.length) return subs.flatMap(legendsOf);
+    const name = text(layer, 'Name');
+    const href = legendHref(layer) || (name ? graphic(name) : '');
+    return href ? [{ title: text(layer, 'Title'), url: href }] : [];
+  };
   const found = [];
+  const legends = [];
   const walk = (layer, strong) => {
     const name = text(layer, 'Name');
     const title = `${text(layer, 'Title')} ${name}`;
     if (EXCLURE.test(title)) return;
     if (name && ZONES_FORTES.test(title)) {
-      found.push({ name, strong: true });
-      return; // une couche groupe affiche ses sous-couches
+      found.push(name);
+      legends.push(...legendsOf(layer)); // une couche groupe affiche ses sous-couches
+      return;
     }
-    if (name && ZONES_S.test(title) && strong) found.push({ name, strong: false });
+    if (name && ZONES_S.test(title) && strong) {
+      found.push(name);
+      legends.push(...legendsOf(layer));
+    }
     kids(layer, 'Layer').forEach((c) => walk(c, strong || ZONES_FORTES.test(title)));
   };
   const cap = xml.getElementsByTagNameNS('*', 'Capability')[0];
   if (!cap) throw new Error('capabilities');
   kids(cap, 'Layer').forEach((l) => walk(l, false));
-  return found.map((f) => f.name);
+  return { names: found, legends };
 }
 
 const LS_DISCOVER = 'rf-discover';
@@ -96,12 +119,13 @@ const discovered = JSON.parse(localStorage.getItem(LS_DISCOVER) || '{}');
 
 async function makeDiscoveredOverlay(o) {
   let cfg = discovered[o.id];
-  if (!cfg) {
+  if (!cfg || !cfg.legends) {
+    cfg = null;
     for (const src of o.discover) {
       try {
-        const names = await discoverWms(src.url);
+        const { names, legends } = await discoverWms(src.url);
         if (names.length) {
-          cfg = { url: src.url, layers: names.join(','), attribution: src.attribution };
+          cfg = { url: src.url, layers: names.join(','), attribution: src.attribution, legends };
           break;
         }
       } catch (e) {
@@ -129,6 +153,7 @@ function applyLayers() {
       makeDiscoveredOverlay(o).then((l) => {
         if (!layerState.overlays.includes(o.id)) return delete overlayLayers[o.id];
         overlayLayers[o.id] = l.addTo(map);
+        if ($('#dlg-layers').open) renderLayerDialog();
       }).catch(() => {
         delete overlayLayers[o.id];
         layerState.overlays = layerState.overlays.filter((x) => x !== o.id);
@@ -150,7 +175,15 @@ applyLayers();
 
 function renderLayerDialog() {
   $('#base-choice').innerHTML = BASES.map((b) => `<button type="button" data-base="${b.id}" class="${layerState.base === b.id ? 'on' : ''}">${esc(b.label)}</button>`).join('');
-  $('#overlay-choice').innerHTML = OVERLAYS.map((o) => `<label><input type="checkbox" data-ov="${o.id}" ${layerState.overlays.includes(o.id) ? 'checked' : ''}> <span class="ov-name">${esc(o.label)}</span>${o.discover ? '' : `<a class="ov-legend" href="https://api3.geo.admin.ch/rest/services/api/MapServer/${o.id}/legend?lang=fr" target="_blank" rel="noopener" title="Légende">légende</a>`}</label>`).join('');
+  $('#overlay-choice').innerHTML = OVERLAYS.map((o) => `<label><input type="checkbox" data-ov="${o.id}" ${layerState.overlays.includes(o.id) ? 'checked' : ''}> <span class="ov-name">${esc(o.label)}</span>${o.discover
+    ? (discovered[o.id]?.legends?.length ? `<button type="button" class="ov-legend link" data-legend="${o.id}">légende</button>` : '')
+    : `<a class="ov-legend" href="https://api3.geo.admin.ch/rest/services/api/MapServer/${o.id}/legend?lang=fr" target="_blank" rel="noopener" title="Légende">légende</a>`}</label>
+    ${o.discover && discovered[o.id]?.legends?.length ? `<div class="ov-legend-box" id="legend-${o.id}" hidden>${discovered[o.id].legends.map((l) => `<div class="lg-row"><img src="${esc(l.url)}" alt="" loading="lazy"><span>${esc(l.title)}</span></div>`).join('')}<p class="hint">Source : ${esc(discovered[o.id].attribution.replace('© ', ''))}</p></div>` : ''}`).join('');
+  $$('#overlay-choice [data-legend]').forEach((b) => b.addEventListener('click', (e) => {
+    e.preventDefault();
+    const box = $(`#legend-${b.dataset.legend}`);
+    box.hidden = !box.hidden;
+  }));
   $$('#base-choice button').forEach((b) => b.addEventListener('click', () => {
     layerState.base = b.dataset.base;
     applyLayers();
