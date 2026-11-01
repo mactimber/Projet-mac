@@ -144,8 +144,8 @@ export function renderFiche(root, chantier, opt) {
   const T = sym('point_t')[0];
   // Case remplie depuis la carte (lieu-dit, commune, adresse) tant qu'on ne l'a pas modifiée soi-même
   const placeRow = (key, label, point, ph) => `
-    <div class="f-row"><span>${label}</span><div class="f-auto">
-      <input data-key="${key}" value="${esc(info[key] ?? point?.place ?? point?.text ?? '')}" placeholder="${esc(ph)}">
+    <div class="f-row f-row-stack"><span>${label}</span><div class="f-auto">
+      <textarea data-key="${key}" rows="1" placeholder="${esc(ph)}">${esc(info[key] ?? point?.place ?? point?.text ?? '')}</textarea>
       ${point?.place ? `<button type="button" class="f-refresh no-print" data-refresh="${key}" data-place="${esc(point.place)}" title="Reprendre depuis la carte" aria-label="Reprendre depuis la carte">↻</button>` : ''}
     </div></div>`;
 
@@ -322,6 +322,7 @@ export function renderFiche(root, chantier, opt) {
   root.querySelectorAll('[data-refresh]').forEach((b) => b.addEventListener('click', () => {
     const input = root.querySelector(`[data-key="${b.dataset.refresh}"]`);
     input.value = b.dataset.place;
+    input.dispatchEvent(new Event('input')); // agrandit la case
     info[b.dataset.refresh] = b.dataset.place;
     opt.onChange();
   }));
