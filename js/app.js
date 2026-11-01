@@ -29,7 +29,14 @@ const OVERLAYS = [
   { id: 'ch.swisstopo.hangneigung-ueber_30', label: 'Pentes raides (> 30°)', opacity: 0.55 },
   { id: 'ch.swisstopo.swissalti3d-reliefschattierung', label: 'Relief du terrain', opacity: 0.45 },
   { id: 'ch.bfe.elektrische-anlagen_ueber_36', label: 'Lignes électriques', opacity: 0.9 },
-  { id: 'ch.bafu.grundwasserschutzzonen', label: 'Zones de protection des eaux (S1, S2, S3)', opacity: 0.6 },
+  {
+    id: 'zones-s', label: 'Zones de protection des eaux (S1, S2, S3)', opacity: 0.65,
+    // Couche cantonale du Valais, puis service intercantonal ; les noms de couches sont lus dans le GetCapabilities.
+    discover: [
+      { url: 'https://sit.vs.ch/arcgis/services/ENVIRONNEMENT/MapServer/WMSServer', attribution: '© Canton du Valais (SEN)' },
+      { url: 'https://geodienste.ch/db/planerischer_gewaesserschutz_v1_2_0/fra', attribution: '© geodienste.ch' },
+    ],
+  },
 ];
 
 const makeBase = (id) => {
@@ -49,8 +56,67 @@ map.pm.setLang('fr');
 
 const LS_LAYERS = 'rf2-layers';
 const layerState = Object.assign({ base: 'carte', overlays: [] }, JSON.parse(localStorage.getItem(LS_LAYERS) || '{}'));
+layerState.overlays = layerState.overlays.filter((id) => id !== 'ch.bafu.grundwasserschutzzonen');
 let baseLayer = null;
 const overlayLayers = {};
+
+/* Couches à découvrir (WMS hors geo.admin) -------------------------------- */
+
+const ZONES_FORTES = /zones?\s+(de\s+)?protection\s+des\s+eaux\s+souterraines|zones?\s+S\b|grundwasserschutzzone|gwszone|schutzzone/i;
+const ZONES_S = /(^|[^a-z])S\s?[123h m]?\b|zone\s+S/i;
+const EXCLURE = /p[ée]rim[èe]tre|areal|secteur|bereich|zuström|au\b|non en vigueur|nicht in kraft|projet/i;
+
+/** Lit le GetCapabilities d'un WMS et retourne les noms des couches « zones S ». */
+async function discoverWms(url) {
+  const r = await fetch(`${url}?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0`);
+  if (!r.ok) throw new Error(r.status);
+  const xml = new DOMParser().parseFromString(await r.text(), 'text/xml');
+  const kids = (el, tag) => [...el.children].filter((c) => c.localName === tag);
+  const text = (el, tag) => kids(el, tag)[0]?.textContent?.trim() || '';
+  const found = [];
+  const walk = (layer, strong) => {
+    const name = text(layer, 'Name');
+    const title = `${text(layer, 'Title')} ${name}`;
+    if (EXCLURE.test(title)) return;
+    if (name && ZONES_FORTES.test(title)) {
+      found.push({ name, strong: true });
+      return; // une couche groupe affiche ses sous-couches
+    }
+    if (name && ZONES_S.test(title) && strong) found.push({ name, strong: false });
+    kids(layer, 'Layer').forEach((c) => walk(c, strong || ZONES_FORTES.test(title)));
+  };
+  const cap = xml.getElementsByTagNameNS('*', 'Capability')[0];
+  if (!cap) throw new Error('capabilities');
+  kids(cap, 'Layer').forEach((l) => walk(l, false));
+  return found.map((f) => f.name);
+}
+
+const LS_DISCOVER = 'rf-discover';
+const discovered = JSON.parse(localStorage.getItem(LS_DISCOVER) || '{}');
+
+async function makeDiscoveredOverlay(o) {
+  let cfg = discovered[o.id];
+  if (!cfg) {
+    for (const src of o.discover) {
+      try {
+        const names = await discoverWms(src.url);
+        if (names.length) {
+          cfg = { url: src.url, layers: names.join(','), attribution: src.attribution };
+          break;
+        }
+      } catch (e) {
+        console.warn('WMS', src.url, e);
+      }
+    }
+    if (!cfg) throw new Error('introuvable');
+    discovered[o.id] = cfg;
+    localStorage.setItem(LS_DISCOVER, JSON.stringify(discovered));
+  }
+  return L.tileLayer.wms(cfg.url, {
+    layers: cfg.layers, format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512,
+    maxZoom: 21, opacity: o.opacity, bounds: SWISS.pad(0.1), attribution: cfg.attribution, // sans crossOrigin : ces serveurs n'autorisent pas forcément le CORS
+  });
+}
 
 function applyLayers() {
   if (baseLayer) map.removeLayer(baseLayer);
@@ -58,9 +124,23 @@ function applyLayers() {
   baseLayer.bringToBack();
   for (const o of OVERLAYS) {
     const on = layerState.overlays.includes(o.id);
+    if (on && !overlayLayers[o.id] && o.discover) {
+      overlayLayers[o.id] = 'pending';
+      makeDiscoveredOverlay(o).then((l) => {
+        if (!layerState.overlays.includes(o.id)) return delete overlayLayers[o.id];
+        overlayLayers[o.id] = l.addTo(map);
+      }).catch(() => {
+        delete overlayLayers[o.id];
+        layerState.overlays = layerState.overlays.filter((x) => x !== o.id);
+        localStorage.setItem(LS_LAYERS, JSON.stringify(layerState));
+        toast('Zones S introuvables : pas de réseau, ou le service du canton ne répond pas.');
+        if ($('#dlg-layers').open) renderLayerDialog();
+      });
+      continue;
+    }
     if (on && !overlayLayers[o.id]) overlayLayers[o.id] = makeOverlay(o).addTo(map);
     if (!on && overlayLayers[o.id]) {
-      map.removeLayer(overlayLayers[o.id]);
+      if (overlayLayers[o.id] !== 'pending') map.removeLayer(overlayLayers[o.id]);
       delete overlayLayers[o.id];
     }
   }
@@ -70,7 +150,7 @@ applyLayers();
 
 function renderLayerDialog() {
   $('#base-choice').innerHTML = BASES.map((b) => `<button type="button" data-base="${b.id}" class="${layerState.base === b.id ? 'on' : ''}">${esc(b.label)}</button>`).join('');
-  $('#overlay-choice').innerHTML = OVERLAYS.map((o) => `<label><input type="checkbox" data-ov="${o.id}" ${layerState.overlays.includes(o.id) ? 'checked' : ''}> <span class="ov-name">${esc(o.label)}</span><a class="ov-legend" href="https://api3.geo.admin.ch/rest/services/api/MapServer/${o.id}/legend?lang=fr" target="_blank" rel="noopener" title="Légende">légende</a></label>`).join('');
+  $('#overlay-choice').innerHTML = OVERLAYS.map((o) => `<label><input type="checkbox" data-ov="${o.id}" ${layerState.overlays.includes(o.id) ? 'checked' : ''}> <span class="ov-name">${esc(o.label)}</span>${o.discover ? '' : `<a class="ov-legend" href="https://api3.geo.admin.ch/rest/services/api/MapServer/${o.id}/legend?lang=fr" target="_blank" rel="noopener" title="Légende">légende</a>`}</label>`).join('');
   $$('#base-choice button').forEach((b) => b.addEventListener('click', () => {
     layerState.base = b.dataset.base;
     applyLayers();
@@ -853,7 +933,7 @@ const TILE_CACHE = 'rf-tiles-v1';
 $('#btn-offline').addEventListener('click', async () => {
   if (!('caches' in window)) return alert('Non pris en charge par ce navigateur.');
   if (map.getZoom() < 13) return alert('Zoomez d\'abord sur le chantier.');
-  const layers = [baseLayer, ...Object.values(overlayLayers)];
+  const layers = [baseLayer, ...Object.values(overlayLayers).filter((l) => l !== 'pending')];
   const urls = new Set();
   const b = map.getBounds();
   for (const layer of layers) {

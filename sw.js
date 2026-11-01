@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne + cache des tuiles cartographiques.
 
-const APP_CACHE = 'rf-app-v16';
+const APP_CACHE = 'rf-app-v17';
 const TILE_CACHE = 'rf-tiles-v1';
 const MAX_RUNTIME_TILES = 6000;
 
@@ -31,7 +31,7 @@ const APP_FILES = [
   'icons/logo-vallon-512.png',
 ];
 
-const TILE_HOSTS = ['wmts.geo.admin.ch', 'wms.geo.admin.ch', 'tile.openstreetmap.org'];
+const TILE_HOSTS = ['wmts.geo.admin.ch', 'wms.geo.admin.ch', 'tile.openstreetmap.org', 'sit.vs.ch', 'geodienste.ch'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(APP_CACHE).then((c) => c.addAll(APP_FILES)).then(() => self.skipWaiting()));
@@ -51,7 +51,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   // Tuiles : cache d'abord, puis réseau (et mise en cache).
-  if (TILE_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`))) {
+  if (TILE_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`)) && !/getcapabilities/i.test(url.search)) {
     event.respondWith(tileFirst(req));
     return;
   }
