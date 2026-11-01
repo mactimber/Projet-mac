@@ -29,6 +29,7 @@ const OVERLAYS = [
   { id: 'ch.swisstopo.hangneigung-ueber_30', label: 'Pentes raides (> 30°)', opacity: 0.55 },
   { id: 'ch.swisstopo.swissalti3d-reliefschattierung', label: 'Relief du terrain', opacity: 0.45 },
   { id: 'ch.bfe.elektrische-anlagen_ueber_36', label: 'Lignes électriques', opacity: 0.9 },
+  { id: 'ch.bafu.grundwasserschutzzonen', label: 'Zones de protection des eaux (S1, S2, S3)', opacity: 0.6 },
 ];
 
 const makeBase = (id) => {
@@ -69,7 +70,7 @@ applyLayers();
 
 function renderLayerDialog() {
   $('#base-choice').innerHTML = BASES.map((b) => `<button type="button" data-base="${b.id}" class="${layerState.base === b.id ? 'on' : ''}">${esc(b.label)}</button>`).join('');
-  $('#overlay-choice').innerHTML = OVERLAYS.map((o) => `<label><input type="checkbox" data-ov="${o.id}" ${layerState.overlays.includes(o.id) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('');
+  $('#overlay-choice').innerHTML = OVERLAYS.map((o) => `<label><input type="checkbox" data-ov="${o.id}" ${layerState.overlays.includes(o.id) ? 'checked' : ''}> <span class="ov-name">${esc(o.label)}</span><a class="ov-legend" href="https://api3.geo.admin.ch/rest/services/api/MapServer/${o.id}/legend?lang=fr" target="_blank" rel="noopener" title="Légende">légende</a></label>`).join('');
   $$('#base-choice button').forEach((b) => b.addEventListener('click', () => {
     layerState.base = b.dataset.base;
     applyLayers();
