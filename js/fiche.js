@@ -213,9 +213,6 @@ export function renderFiche(root, chantier, opt) {
         <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
         <div class="f-ratio" id="f-ratio"></div>
       </div>
-      ${extras.map((x) => `<div class="f-legend f-legend-extra"><b>${esc(x.label)} :</b>
-        ${x.legends.map((l) => `<span class="lg-img"><img src="${esc(l.url)}" alt="">${l.title && !/^\d+$/.test(l.title) ? esc(l.title) : ''}</span>`).join('')}
-      </div>`).join('')}
       <div class="f-legend">
         <b>Légende :</b>
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
