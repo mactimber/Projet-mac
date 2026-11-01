@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne + cache des tuiles cartographiques.
 
-const APP_CACHE = 'rf-app-v9';
+const APP_CACHE = 'rf-app-v10';
 const TILE_CACHE = 'rf-tiles-v1';
 const MAX_RUNTIME_TILES = 6000;
 
@@ -24,10 +24,10 @@ const APP_FILES = [
   'vendor/leaflet/images/marker-shadow.png',
   'vendor/geoman/leaflet-geoman.min.js',
   'vendor/geoman/leaflet-geoman.css',
-  'icons/icon-180.png',
+  'icons/logo-vallon-180.png',
   'img/logo-triage.jpg',
-  'icons/icon-192.png',
-  'icons/icon-512.png',
+  'icons/logo-vallon-192.png',
+  'icons/logo-vallon-512.png',
 ];
 
 const TILE_HOSTS = ['wmts.geo.admin.ch', 'wms.geo.admin.ch', 'tile.openstreetmap.org'];
