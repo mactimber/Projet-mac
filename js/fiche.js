@@ -66,26 +66,39 @@ function stopDictee() {
   dictee = null;
 }
 
-/** Écoute et ajoute le texte dicté à la fin de la case. */
+/** Retire un début de phrase répété (« coupe coupe de mise coupe de mise en lumière » → « coupe de mise en lumière »). */
+function sansRepetition(t) {
+  const mots = t.split(/\s+/);
+  for (let n = 1; n <= mots.length / 2; n++) {
+    // si le texte se termine par une phrase qui commence par les mêmes mots que le début, ne garder que la fin
+    for (let i = 1; i < mots.length; i++) {
+      const fin = mots.slice(i);
+      const debut = mots.slice(0, i);
+      if (fin.length >= debut.length && debut.join(' ').toLowerCase() === fin.slice(0, debut.length).join(' ').toLowerCase()) {
+        return sansRepetition(fin.join(' '));
+      }
+    }
+  }
+  return t;
+}
+
+/** Écoute une phrase et l'ajoute à la fin de la case. */
 function startDictee(btn, textarea) {
   const same = dictee?.btn === btn;
   stopDictee();
   if (same) return;
   const rec = new SR();
   rec.lang = 'fr-CH';
+  // Une phrase par toucher : le mode continu de Chrome Android renvoie des morceaux en double.
   rec.interimResults = true;
-  rec.continuous = true;
+  rec.continuous = false;
+  rec.maxAlternatives = 1;
   const base = textarea.value.trim();
-  let final = '';
   rec.onresult = (e) => {
-    let interim = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) final += `${t.trim()} `;
-      else interim += t;
-    }
-    let dit = `${final}${interim}`.trim();
-    if (dit) dit = dit[0].toUpperCase() + dit.slice(1);
+    // La DERNIÈRE version reçue contient toute la phrase : on remplace, on n'ajoute pas.
+    let dit = sansRepetition(e.results[e.results.length - 1][0].transcript.trim());
+    if (!dit) return;
+    dit = dit[0].toUpperCase() + dit.slice(1);
     textarea.value = [base, dit].filter(Boolean).join(base && !/[.\n]$/.test(base) ? '. ' : '\n');
     textarea.dispatchEvent(new Event('input'));
   };
