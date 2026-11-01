@@ -119,3 +119,48 @@ export function bearingLabel(deg) {
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
   return `${Math.round(deg)}° (${dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8]})`;
 }
+
+/**
+ * Point au « milieu » d'une parcelle (anneau [{lat,lng}]) : centre de gravité,
+ * ou, si la parcelle est en forme de L / U et que ce centre tombe dehors,
+ * le milieu du plus large segment intérieur passant à sa hauteur.
+ */
+export function parcelCenter(ring) {
+  const pts = ring.map((ll) => wgs84ToLV95(ll.lat, ll.lng));
+  const n = pts.length;
+  if (n < 3) return null;
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], q = pts[(i + 1) % n];
+    const f = p.E * q.N - q.E * p.N;
+    a += f;
+    cx += (p.E + q.E) * f;
+    cy += (p.N + q.N) * f;
+  }
+  if (Math.abs(a) < 1e-9) return null;
+  let c = { E: cx / (3 * a), N: cy / (3 * a) };
+  if (!pointInRing(c, pts)) {
+    // intersections de l'horizontale N = c.N avec les côtés
+    const xs = [];
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], q = pts[(i + 1) % n];
+      if ((p.N > c.N) !== (q.N > c.N)) xs.push(p.E + ((c.N - p.N) / (q.N - p.N)) * (q.E - p.E));
+    }
+    xs.sort((x, y) => x - y);
+    let best = null;
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      if (!best || xs[i + 1] - xs[i] > best[1] - best[0]) best = [xs[i], xs[i + 1]];
+    }
+    if (best) c = { E: (best[0] + best[1]) / 2, N: c.N };
+  }
+  return lv95ToWgs84(c.E, c.N);
+}
+
+function pointInRing(p, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i], b = pts[j];
+    if ((a.N > p.N) !== (b.N > p.N) && p.E < ((b.E - a.E) * (p.N - a.N)) / (b.N - a.N) + a.E) inside = !inside;
+  }
+  return inside;
+}

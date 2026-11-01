@@ -47,12 +47,12 @@ export function newChantier(name = 'Nouveau chantier') {
   const now = new Date().toISOString();
   return {
     id: uid(),
+    version: 2,
     created: now,
     updated: now,
-    info: { name, date_releve: now.slice(0, 10), statut: 'Relevé' },
-    securite: {},
-    coupe: {},
-    features: { type: 'FeatureCollection', features: [] },
+    info: { name, date: now.slice(0, 10) },
+    parcel: null, // [[lat, lng], ...]
+    symbols: [], // { id, kind, lat, lng, lat2?, lng2?, text?, manual? }
     view: null,
   };
 }
