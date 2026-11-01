@@ -60,6 +60,11 @@ export function renderFiche(root, chantier, opt) {
   const legendIcon = (d) => symbolSvg(d.kind, d.mode === 'point' && !['heli', 'point_t'].includes(d.kind) ? 20 : 18);
   const area = chantier.parcel ? formatArea(polygonArea(L.polygon(chantier.parcel))).split(' (')[0] : '';
 
+  const DANGERS = ['Chute de hauteur', 'Chute de pierres', 'Bois mort', 'Ligne électrique', 'Route, trafic', 'Tiers (promeneurs…)', 'Pas de réseau mobile', 'Pente raide', 'Autres'];
+  if (info.mesures === undefined && typeof info.dangers === 'string') info.mesures = info.dangers; // ancienne case « Dangers et mesures »
+  const coches = new Set(Array.isArray(info.dangers_coches) ? info.dangers_coches : []);
+  const T = sym('point_t')[0];
+
   root.innerHTML = `
   <div class="fiche-bar no-print">
     <button type="button" id="fiche-close">← Carte</button>
@@ -74,15 +79,42 @@ export function renderFiche(root, chantier, opt) {
   <article class="page">
     <header class="f-head">
       <div>
-        <div class="f-kicker">ORGANISATION DE CHANTIER · FICHE DE SECOURS</div>
+        <div class="f-kicker">ORGANISATION DE CHANTIER</div>
         <input class="f-title" data-key="name" value="${esc(info.name || '')}" placeholder="Nom du chantier">
-      </div>
-      <div class="f-head-right">
-        ${field('date', 'Date', { type: 'date' })}
       </div>
       <img src="img/logo-triage.jpg" alt="Triage forestier du Vallon" class="f-logo">
     </header>
 
+    <h2 class="f-sec">Attribution du travail</h2>
+    <section class="f-work">
+      <div class="f-col">
+        ${field('travaux', 'Quoi, où, pourquoi ?', { multi: true, ph: 'Coupe, lieu, but…' })}
+        ${field('methode', 'Comment, avec quoi ?', { multi: true, ph: 'Méthode, machines, débardage…' })}
+        ${field('volume', 'Combien ? (volume)', { multi: true, ph: 'm³ par essence…' })}
+        <div class="f-pair">
+          ${field('date', 'Début', { type: 'date' })}
+          ${field('date_fin', 'Fin', { type: 'date' })}
+        </div>
+      </div>
+      <div class="f-col">
+        <div class="f-pair">
+          ${field('responsable', 'Contremaître')}
+          ${field('resp_tel', 'Téléphone', { type: 'tel' })}
+        </div>
+        ${field('equipe', 'Collaborateurs (nom – téléphone)', { multi: true })}
+        <div class="f-pair">
+          ${field('formateur', 'Formateur')}
+          ${field('apprentis', 'Apprentis')}
+        </div>
+        <div class="ff"><span>Dangers particuliers</span>
+          <div class="f-checks">${DANGERS.map((d) => `<label><input type="checkbox" data-danger="${esc(d)}" ${coches.has(d) ? 'checked' : ''}> ${esc(d)}</label>`).join('')}</div>
+        </div>
+        ${field('mesures', 'Mesures', { multi: true, ph: 'Bâches, trois lattes, sentinelles…' })}
+        ${field('autres_travaux', 'Autres travaux', { multi: true })}
+      </div>
+    </section>
+
+    <h2 class="f-sec">Organisation en cas d'urgence</h2>
     <section class="f-cols">
     <div class="f-suva">
       <h3>Numéros d'urgence</h3>
@@ -90,59 +122,61 @@ export function renderFiche(root, chantier, opt) {
       <div class="f-contacts">
         <div class="f-row"><span>Médecin</span><input data-key="medecin" value="${esc(info.medecin || '')}" placeholder="Nom – téléphone"></div>
         <div class="f-row"><span>Hôpital</span><input data-key="hopital" value="${esc(info.hopital || '')}" placeholder="Nom – téléphone"></div>
-        <div class="f-row"><span>Lieu-dit</span><input data-key="lieu" value="${esc(info.lieu || info.commune || '')}" placeholder="Lieu-dit, commune"></div>
       </div>
-      <h3>Coordonnées ou adresse</h3>
+      <h3>Sauvetage aérien <small>(milieu du lieu d'abattage)</small></h3>
       <div class="f-contacts">
-        ${coordLine('heli', 'Pour sauvetage aérien')}
-        ${coordLine('point_t', 'Pour sauvetage terrestre <small>(point de rencontre)</small>')}
+        ${coordLine('heli', 'Coordonnées H')}
+      </div>
+      <h3>Sauvetage terrestre <small>(point T)</small></h3>
+      <div class="f-contacts">
+        <div class="f-row"><span>Localité</span><input data-key="localite_t" value="${esc(info.localite_t ?? (T?.text || ''))}" placeholder="ex. Les Ziettes / Vercorin"></div>
+        ${coordLine('point_t', 'Coordonnées T')}
       </div>
     </div>
 
     <div class="f-box f-alarme">
-      <h3>Donner l'alarme</h3>
+      <h3>Annonce d'une urgence</h3>
       <ol>
-        <li><b>Qui</b> appelle ? (nom, n° de téléphone)</li>
-        <li><b>Où</b> ? Lire les <b>coordonnées</b> (aérien / terrestre)</li>
-        <li><b>Quoi</b> ? Que s'est-il passé ?</li>
-        <li><b>Combien</b> de blessés ? Quelles blessures ?</li>
-        <li><b>Quand</b> ?</li>
-        <li><b>Autres</b> : câbles, lignes électriques, météo, vent</li>
+        <li><b>Qui</b> donne l'alerte ? (nom, n° de téléphone)</li>
+        <li><b>Que</b> s'est-il passé ?</li>
+        <li><b>Quand</b> a eu lieu l'accident ?</li>
+        <li><b>Où</b> sont les blessés ? Lire les <b>coordonnées H ou T</b></li>
+        <li><b>Combien</b> de blessés ?</li>
+        <li><b>Autres dangers</b> : câbles, lignes électriques, météo, vent</li>
       </ol>
       <p class="f-small">Rester joignable. Ne pas raccrocher le premier. Envoyer quelqu'un au point de rencontre (T).</p>
+      <p class="f-small"><b>L'organisation en cas d'urgence doit être connue de tous et vérifiée chaque jour</b> (météo, visibilité, accès).</p>
     </div>
     </section>
+  </article>
 
-    <section class="f-box f-org">
-      <h3>Organisation</h3>
-      <div class="f-grid">
-        ${field('travaux', 'Travaux', { ph: 'Coupe, éclaircie, chablis…' })}
-        ${field('responsable', 'Responsable')}
-        ${field('resp_tel', 'Tél. responsable', { type: 'tel' })}
-        ${field('secouriste', 'Secouriste')}
+  <article class="page page-plan">
+    <header class="f-head f-head-small">
+      <div>
+        <div class="f-kicker">ORGANISATION DE CHANTIER · PLAN DE COUPE</div>
+        <div class="f-title-small">${esc(info.name || '')}${area ? ` <small>· parcelle ${esc(area)}</small>` : ''}</div>
       </div>
-      <div class="f-grid f-grid3">
-        ${field('equipe', 'Équipe (nom – téléphone)', { multi: true })}
-        ${field('acces', 'Accès pour l\'ambulance', { multi: true, ph: 'Route, barrière, clé…' })}
-        ${field('dangers', 'Dangers et mesures', { multi: true, ph: 'Pente, ligne électrique…' })}
-      </div>
-    </section>
-
-    <section class="f-box f-plan">
-      <h3>Plan de coupe${area ? ` <small>· parcelle ${esc(area)}</small>` : ''}</h3>
+      <img src="img/logo-triage.jpg" alt="" class="f-logo f-logo-small">
+    </header>
+    <section class="f-plan">
       <div class="f-mapwrap">
         <div id="fiche-map"></div>
         <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
         <div class="f-ratio" id="f-ratio"></div>
       </div>
       <div class="f-legend">
+        <b>Légende :</b>
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
         ${kindsUsed.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}
         ${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}
       </div>
     </section>
-
   </article>`;
+
+  root.querySelectorAll('[data-danger]').forEach((cb) => cb.addEventListener('change', () => {
+    info.dangers_coches = [...root.querySelectorAll('[data-danger]:checked')].map((x) => x.dataset.danger);
+    opt.onChange();
+  }));
 
   // Champs : enregistrement automatique
   root.querySelectorAll('[data-key]').forEach((el) => {
@@ -204,6 +238,7 @@ function fitFicheMap(chantier) {
 /** Passe en mise en page A4, recadre la carte, attend les fonds de carte puis imprime. */
 export function printFiche(root, chantier) {
   root.classList.add('print-layout');
+  root.querySelectorAll('input[type=date]').forEach((d) => d.classList.toggle('is-empty', !d.value));
   root.querySelectorAll('textarea').forEach((t) => { t.style.height = 'auto'; t.style.height = `${t.scrollHeight + 2}px`; });
   fitFicheMap(chantier);
   let done = false;
