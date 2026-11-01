@@ -259,6 +259,7 @@ export function renderFiche(root, chantier, opt) {
         <div id="fiche-map"></div>
         <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
         <div class="f-ratio" id="f-ratio"></div>
+        <button type="button" class="f-recadrer no-print" id="f-recadrer" ${chantier.ficheView ? '' : 'hidden'}>↺ Cadrage automatique</button>
       </div>
       <div class="f-legend">
         <b>Légende :</b>
@@ -378,11 +379,37 @@ export function renderFiche(root, chantier, opt) {
   for (const s of chantier.symbols) symbolLayer(s, { interactive: false })?.addTo(ficheMap);
   fitFicheMap(chantier);
   ficheMap.on('zoomend', updateRatio);
+  ficheMap.on('moveend', () => {
+    if (recadrageAuto || root.classList.contains('print-layout')) return;
+    const b = ficheMap.getBounds();
+    chantier.ficheView = { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() };
+    root.querySelector('#f-recadrer').hidden = false;
+    opt.onChange();
+  });
+  root.querySelector('#f-recadrer').addEventListener('click', () => {
+    delete chantier.ficheView;
+    fitFicheMap(chantier, { auto: true });
+    root.querySelector('#f-recadrer').hidden = true;
+    opt.onChange();
+  });
 }
 
-function fitFicheMap(chantier) {
+let recadrageAuto = false;
+let dernierChantier = null; // vrai pendant un recadrage fait par l'application (pas par l'utilisateur)
+
+function fitFicheMap(chantier, { auto = false } = {}) {
   if (!ficheMap) return;
+  dernierChantier = chantier;
+  recadrageAuto = true;
   ficheMap.invalidateSize({ animate: false, pan: false });
+  // Cadrage choisi à la main (zoom / déplacement) : on le garde, y compris pour l'impression
+  const v = chantier.ficheView;
+  if (v && !auto) {
+    ficheMap.fitBounds([[v.s, v.w], [v.n, v.e]], { animate: false });
+    recadrageAuto = false;
+    updateRatio();
+    return;
+  }
   const pts = [...(chantier.parcel || [])];
   for (const s of chantier.symbols) {
     if (s.lat != null) pts.push([s.lat, s.lng]);
@@ -392,6 +419,7 @@ function fitFicheMap(chantier) {
   if (pts.length > 1) ficheMap.fitBounds(L.latLngBounds(pts).pad(0.08), { maxZoom: 18, animate: false });
   else if (pts.length === 1) ficheMap.setView(pts[0], 17, { animate: false });
   else ficheMap.setView([46.8, 8.2], 8, { animate: false });
+  recadrageAuto = false;
   updateRatio();
 }
 
@@ -415,7 +443,7 @@ window.addEventListener('afterprint', () => {
   const root = document.querySelector('#fiche.print-layout');
   if (!root) return;
   root.classList.remove('print-layout');
-  ficheMap?.invalidateSize();
+  if (ficheMap && dernierChantier) fitFicheMap(dernierChantier); // revient au cadrage enregistré (sans l'écraser)
 });
 
 /** Échelle approximative du plan (1 : N) d'après le zoom et la taille à l'écran / sur papier. */

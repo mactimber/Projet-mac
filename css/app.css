@@ -384,3 +384,5 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .print-layout .resp-print { display: block; }
 .resp-print-txt { font-size: 14px; padding: 3px 2px; border-bottom: 1.5px dotted #999; min-height: 22px; }
 .print-layout .page .ff-multi textarea { min-height: 11mm; }
+.f-recadrer { position: absolute; top: 8px; left: 8px; z-index: 600; min-height: 0; padding: 4px 10px; font-size: 13px; background: #fff; border: 1.5px solid #333; border-radius: 6px; }
+.print-layout .f-recadrer { display: none; }
