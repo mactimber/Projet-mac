@@ -2,7 +2,7 @@
 // 1. Parcelle  2. Symboles  3. Fiche de secours
 
 import { db, newChantier, uid } from './db.js';
-import { SYMBOLS, SYMBOL_BY_KIND, GROUPS, symbolSvg } from './symbols.js';
+import { SYMBOLS, SYMBOL_BY_KIND, GROUPS, ZONE_COLORS, symbolSvg } from './symbols.js';
 import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
 import { renderFiche, closeFicheMap } from './fiche.js';
 import { wgs84ToLV95, formatLV95, parseCoordinates, polygonArea, formatArea, parcelCenter, pathLength, formatLength } from './swiss.js';
@@ -225,6 +225,7 @@ function symbolPopup(s, latlng) {
     ${s.kind === 'heli' && s.manual && chantier.parcel ? '<button type="button" data-a="center">Remettre au milieu de la parcelle</button>' : ''}
     ${def.mode === 'wedge' || def.mode === 'orient' ? '<button type="button" data-a="rotate">Changer la direction</button>' : ''}
     ${(def.mode === 'point' || def.mode === 'orient') && !def.coordLabel ? `<button type="button" data-a="text">${s.text ? 'Modifier le texte' : 'Ajouter un texte'}</button>` : ''}
+    ${def.mode === 'zone' ? `<div class="sp-coord">${esc(s.text || '')} · ${formatArea(polygonArea(L.polygon(s.pts))).split(' (')[0]}</div><button type="button" data-a="text">Renommer</button><button type="button" data-a="color">Changer la couleur</button>` : ''}
     ${movable ? '<p class="sp-hint">Pour déplacer : glissez le symbole.</p>' : ''}
     <button type="button" data-a="del" class="danger">Supprimer</button>`;
   const pop = L.popup({ autoPan: true }).setLatLng(movable ? [s.lat, s.lng] : latlng).setContent(div).openOn(map);
@@ -237,8 +238,12 @@ function symbolPopup(s, latlng) {
   act('del', () => { chantier.symbols = chantier.symbols.filter((x) => x !== s); });
   act('center', () => { s.manual = false; autoHeli(chantier); });
   act('text', () => {
-    const t = prompt('Texte affiché à côté du symbole :', s.text || '');
+    const t = prompt(def.mode === 'zone' ? 'Nom de la zone :' : 'Texte affiché à côté du symbole :', s.text || '');
     if (t !== null) s.text = t;
+  });
+  act('color', () => {
+    const i = ZONE_COLORS.indexOf(s.color || ZONE_COLORS[0]);
+    s.color = ZONE_COLORS[(i + 1) % ZONE_COLORS.length];
   });
   div.querySelector('[data-a=rotate]')?.addEventListener('click', () => {
     map.closePopup(pop);
@@ -430,6 +435,7 @@ function startPlacing(kind) {
   $('#sheet').hidden = true;
   hint(def.hint, () => {
     if (def.mode === 'line' && placing?.pts.length >= 2) finishLine();
+    if (def.mode === 'zone' && placing?.pts.length >= 3) finishZone();
     backToPalette();
   });
 }
@@ -444,6 +450,16 @@ function stopPlacing() {
 function finishLine() {
   const def = SYMBOL_BY_KIND[placing.kind];
   chantier.symbols.push({ id: uid(), kind: def.kind, pts: placing.pts.map((p) => [p.lat, p.lng]) });
+  placing.pts = [];
+  tempGroup.clearLayers();
+  drawSymbols();
+  save();
+}
+
+function finishZone() {
+  const name = prompt('Nom de la zone (ex. Zone marécage, Arbres au tracteur, Hélico) :', '');
+  const used = chantier.symbols.filter((x) => x.kind === 'zone').length;
+  chantier.symbols.push({ id: uid(), kind: 'zone', pts: placing.pts.map((p) => [p.lat, p.lng]), text: name || '', color: ZONE_COLORS[used % ZONE_COLORS.length] });
   placing.pts = [];
   tempGroup.clearLayers();
   drawSymbols();
@@ -489,6 +505,16 @@ map.on('click', (e) => {
     save();
     if (def.mode === 'arrow') return backToPalette();
     $('#hint-text').textContent = 'Arbre suivant : touchez l\'arbre, puis la direction.';
+    return;
+  }
+
+  if (def.mode === 'zone') {
+    placing.pts.push(ll);
+    tempGroup.clearLayers();
+    const color = ZONE_COLORS[chantier.symbols.filter((x) => x.kind === 'zone').length % ZONE_COLORS.length];
+    (placing.pts.length > 2 ? L.polygon : L.polyline)(placing.pts, { color, weight: 3, dashArray: '6 6', fillOpacity: 0.15 }).addTo(tempGroup);
+    placing.pts.forEach((p) => L.circleMarker(p, { radius: 6, color: '#111', weight: 2, fillColor: '#fff', fillOpacity: 1 }).addTo(tempGroup));
+    $('#hint-text').textContent = placing.pts.length < 3 ? 'Touchez le coin suivant.' : `${placing.pts.length} coins. Touchez le suivant, ou « Terminer » pour nommer la zone.`;
     return;
   }
 

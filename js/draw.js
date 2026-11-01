@@ -1,8 +1,8 @@
 // Affichage de la parcelle et des symboles sur une carte Leaflet
 // (carte principale et carte de la fiche de secours).
 
-import { SYMBOL_BY_KIND, symbolSvg, symbolArt, mapHeight, arrowHeadSvg, WEDGE_SVG } from './symbols.js';
-import { formatLV95 } from './swiss.js';
+import { SYMBOL_BY_KIND, symbolSvg, symbolArt, mapHeight, arrowHeadSvg, WEDGE_SVG, ZONE_COLORS } from './symbols.js';
+import { formatLV95, parcelCenter } from './swiss.js';
 
 export const PARCEL_STYLE = { color: '#f4b6b0', weight: 2.5, fillColor: '#ffffff', fillOpacity: 0.38 };
 export const PARCEL_STYLE_OUTLINE = { color: '#ffffff', weight: 5, fill: false, opacity: 0.9, interactive: false };
@@ -56,9 +56,9 @@ function headMarker(at, angle, color, size, interactive) {
   });
 }
 
-function labelMarker(at, html, cls, interactive) {
+function labelMarker(at, html, cls, interactive, style = '') {
   return L.marker(at, {
-    icon: L.divIcon({ className: `sym-tag ${cls}`, html: `<span>${html}</span>`, iconSize: null }),
+    icon: L.divIcon({ className: `sym-tag ${cls}`, html: `<span style="${style}">${html}</span>`, iconSize: null }),
     interactive,
     keyboard: false,
   });
@@ -151,6 +151,18 @@ export function symbolLayer(s, opt = {}) {
     L.polyline([a, b], { color: '#111', weight: 2.5 * scale, interactive: inter }).addTo(g);
     headMarker(b, bearing(a, b), '#111', Math.round(16 * scale), inter).addTo(g);
     L.circleMarker(a, { radius: 9 * scale, color: '#111', weight: 2, fillColor: def.color, fillOpacity: 1, interactive: inter }).addTo(g);
+    return g;
+  }
+
+  if (def.mode === 'zone') {
+    const pts = s.pts || [];
+    if (pts.length < 3) return null;
+    const color = s.color || ZONE_COLORS[0];
+    L.polygon(pts, { color, weight: 2.5 * scale, dashArray: '7 5', fillColor: color, fillOpacity: 0.18, interactive: inter }).addTo(g);
+    if (s.text) {
+      const c = parcelCenter(pts.map(([lat, lng]) => ({ lat, lng }))) || L.polygon(pts).getBounds().getCenter();
+      labelMarker(c, esc(s.text), 'tag-zone', inter, `border-color:${color};color:${color}`).addTo(g);
+    }
     return g;
   }
 

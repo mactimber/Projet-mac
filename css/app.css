@@ -281,3 +281,5 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .backup summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 6px 0; }
 .sym-orient svg { filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
 .sym .sym-label-free { border: 0; background: rgba(255,255,255,.75); font-size: 13px; padding: 0 3px; }
+.sym-tag.tag-zone span { font-size: 12px; border-width: 2px; border-radius: 4px; background: rgba(255,255,255,.92); }
+.lg-zone { display: inline-block; width: 18px; height: 12px; border: 2px dashed; }

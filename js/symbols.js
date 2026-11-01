@@ -8,6 +8,9 @@
 
 const RED = '#e31e24';
 
+/** Couleurs proposées pour les zones (on passe de l'une à l'autre). */
+export const ZONE_COLORS = ['#1565c0', '#e65100', '#7b1fa2', '#2e7d32', '#c62828', '#00838f'];
+
 /** Dessins SVG des symboles ponctuels : [largeur, hauteur, contenu] (unités du viewBox). */
 const POINT_SVG = {
   heli: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="${RED}" stroke="#111" stroke-width="2.5"/><path d="M12.5 10h4.6v7.6h5.8V10h4.6v20h-4.6v-8.1h-5.8V30h-4.6z" fill="#111"/>`],
@@ -62,11 +65,11 @@ export const SYMBOLS = [
   { kind: 'pile', group: 'Coupe', label: 'Pile de bois', mode: 'orient', askText: '', hint: 'Touchez la pile, puis la direction de sa longueur.' },
   { kind: 'depot', group: 'Coupe', label: 'Pile longue (BF, déchi)', mode: 'orient', askText: '', hint: 'Touchez la pile, puis la direction de sa longueur.' },
   // --- Lignes
-  { kind: 'layon', group: 'Lignes', label: 'Layon', mode: 'line', maxPts: 2, color: '#1f5f8b', weight: 6, hint: 'Touchez le début puis la fin du layon.' },
-  { kind: 'cabler', group: 'Lignes', label: 'Arbres à câbler', mode: 'line', color: '#f2c200', weight: 5, outline: '#111', hint: 'Touchez les points du secteur, puis « Terminer ».' },
-  { kind: 'electrique', group: 'Lignes', label: 'Ligne électrique', mode: 'line', color: '#111', weight: 3, lineLabel: 'Ligne électrique', hint: 'Touchez les pylônes un par un, puis « Terminer ».' },
-  { kind: 'circulation', group: 'Lignes', label: 'Flèche (circulation)', mode: 'line', color: RED, weight: 4, arrowEnd: true, hint: 'Touchez les points du trajet, puis « Terminer ».' },
-  { kind: 'distance', group: 'Lignes', label: 'Distance (cote)', mode: 'line', maxPts: 2, color: '#f39200', weight: 3, arrowEnd: true, arrowStart: true, measure: true, hint: 'Touchez le début puis la fin de la mesure.' },
+  { kind: 'zone', group: 'Zones et lignes', label: 'Zone (à nommer)', mode: 'zone', hint: 'Touchez les coins de la zone, puis « Terminer ».' },
+  { kind: 'layon', group: 'Zones et lignes', label: 'Layon', mode: 'line', maxPts: 2, color: '#1f5f8b', weight: 6, hint: 'Touchez le début puis la fin du layon.' },
+  { kind: 'electrique', group: 'Zones et lignes', label: 'Ligne électrique', mode: 'line', color: '#111', weight: 3, lineLabel: 'Ligne électrique', hint: 'Touchez les pylônes un par un, puis « Terminer ».' },
+  { kind: 'circulation', group: 'Zones et lignes', label: 'Flèche (circulation)', mode: 'line', color: RED, weight: 4, arrowEnd: true, hint: 'Touchez les points du trajet, puis « Terminer ».' },
+  { kind: 'distance', group: 'Zones et lignes', label: 'Distance (cote)', mode: 'line', maxPts: 2, color: '#f39200', weight: 3, arrowEnd: true, arrowStart: true, measure: true, hint: 'Touchez le début puis la fin de la mesure.' },
   // --- Signalisation
   { kind: 'triopan', group: 'Signalisation', label: 'Triopan', mode: 'point', hint: 'Touchez l\'emplacement du Triopan.' },
   { kind: 'trois_lattes', group: 'Signalisation', label: 'Trois lattes', mode: 'point', hint: 'Touchez l\'emplacement des trois lattes.' },
@@ -98,6 +101,7 @@ export function symbolArt(kind) {
   if (def.mode === 'wedge') return [40, 40, WEDGE_SVG];
   if (def.mode === 'arrow') return [40, 40, debutIcon(def.color)];
   if (def.mode === 'line') return lineIcon(def);
+  if (def.mode === 'zone') return [40, 40, `<path d="M5 12L22 4L36 14L32 34L9 31Z" fill="${ZONE_COLORS[0]}" fill-opacity=".22" stroke="${ZONE_COLORS[0]}" stroke-width="2.5" stroke-dasharray="5 3" stroke-linejoin="round"/><rect x="10" y="15" width="20" height="9" rx="1.5" fill="#fff" stroke="${ZONE_COLORS[0]}" stroke-width="1.5"/>`];
   if (kind === 'texte') return [40, 40, '<rect x="3" y="8" width="34" height="24" fill="#fff" stroke="#111" stroke-width="2.5"/><path d="M9 15h22M9 21h22M9 27h14" stroke="#111" stroke-width="2.4"/>'];
   return [40, 40, ''];
 }

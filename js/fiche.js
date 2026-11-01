@@ -47,7 +47,8 @@ export function renderFiche(root, chantier, opt) {
       : '<span class="missing">à placer sur la carte (étape 2)</span>'}</div></div>`;
   };
 
-  const kindsUsed = SYMBOLS.filter((d) => chantier.symbols.some((s) => s.kind === d.kind) && d.kind !== 'texte');
+  const kindsUsed = SYMBOLS.filter((d) => chantier.symbols.some((s) => s.kind === d.kind) && !['texte', 'zone'].includes(d.kind));
+  const zones = chantier.symbols.filter((s) => s.kind === 'zone' && s.text);
   const legendIcon = (d) => symbolSvg(d.kind, d.mode === 'point' && !['heli', 'point_t'].includes(d.kind) ? 20 : 18);
   const area = chantier.parcel ? formatArea(polygonArea(L.polygon(chantier.parcel))).split(' (')[0] : '';
 
@@ -130,6 +131,7 @@ export function renderFiche(root, chantier, opt) {
       <div class="f-legend">
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
         ${kindsUsed.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}
+        ${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}
       </div>
     </section>
 
