@@ -266,7 +266,6 @@ export function renderFiche(root, chantier, opt) {
         <div class="f-kicker">ORGANISATION DE CHANTIER · PLAN DE COUPE</div>
         <div class="f-title-small">${esc(info.name || '')}${area ? ` <small>· parcelle ${esc(area)}</small>` : ''}</div>
       </div>
-      <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position<br>sur ce plan</span></div>
       <img src="img/logo-triage.jpg" alt="" class="f-logo f-logo-small">
     </header>
     <section class="f-plan">
@@ -276,11 +275,14 @@ export function renderFiche(root, chantier, opt) {
         <div class="f-ratio" id="f-ratio"></div>
         <button type="button" class="f-recadrer no-print" id="f-recadrer" ${chantier.ficheView ? '' : 'hidden'}>↺ Cadrage automatique</button>
       </div>
+      <div class="f-plan-foot">
       <div class="f-legend">
         <b>Légende :</b>
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
         ${kindsUsed.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}
         ${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}
+      </div>
+      <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position sur ce plan</span></div>
       </div>
     </section>
   </article>`;

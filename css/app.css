@@ -401,3 +401,9 @@ body.viewer #map { bottom: 0; }
 .viewer-bar #viewer-pos { font-size: 14px; color: #333; margin-top: 2px; }
 .viewer-bar .ok { color: var(--green-2); }
 .print-layout .f-qr #f-qr-img svg { width: 28mm; height: 28mm; }
+/* QR code en bas à droite de la page du plan, à côté de la légende */
+.f-plan-foot { display: flex; align-items: flex-end; gap: 12px; margin-top: 4px; }
+.f-plan-foot .f-legend { flex: 1; min-width: 0; }
+.f-plan-foot .f-qr { flex-direction: column; align-items: center; text-align: center; margin-left: 0; gap: 2px; font-size: 9.5px; }
+.f-plan-foot .f-qr #f-qr-img svg { width: 24mm; height: 24mm; }
+.print-layout .f-plan-foot .f-qr #f-qr-img svg { width: 26mm; height: 26mm; }
