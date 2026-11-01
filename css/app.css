@@ -278,3 +278,4 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 .palette button svg { max-width: 92%; height: auto; max-height: 34px; }
+.backup summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 6px 0; }

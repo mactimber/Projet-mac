@@ -766,7 +766,7 @@ function download(name, text) {
 $('#btn-backup').addEventListener('click', async () => {
   await saveNow();
   const all = await db.list();
-  download(`chantiers_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ format: 'releve-forestier', version: 2, chantiers: all }));
+  download(`copie-secours-chantiers_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ format: 'releve-forestier', version: 2, chantiers: all }));
 });
 $('#input-import').addEventListener('change', async (e) => {
   const file = e.target.files[0];

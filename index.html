@@ -61,9 +61,17 @@
       <div class="dialog-body"><ul id="chantier-list" class="chantier-list"></ul></div>
       <footer>
         <button type="button" id="btn-new-chantier" class="primary big">+ Nouveau chantier</button>
+        <p class="hint">Vos chantiers s'enregistrent tout seuls sur ce téléphone.<br>
+          Pour obtenir la fiche en PDF : <b>3. Fiche de secours → Imprimer / PDF</b>.</p>
+        <details class="backup">
+          <summary>Copie de secours (changer de téléphone)</summary>
+          <p class="hint">Crée un fichier de données à garder (Drive, e-mail…) pour récupérer vos chantiers sur un autre appareil avec « Récupérer ». Ce fichier ne s'ouvre pas pour être lu : c'est normal.</p>
+          <div class="row">
+            <button type="button" id="btn-backup">Créer la copie</button>
+            <label class="btn">Récupérer une copie<input type="file" id="input-import" accept=".json,application/json" hidden></label>
+          </div>
+        </details>
         <div class="row">
-          <button type="button" id="btn-backup">Sauvegarder</button>
-          <label class="btn">Importer<input type="file" id="input-import" accept=".json,application/json" hidden></label>
           <span class="spacer"></span>
           <button value="close">Fermer</button>
         </div>
