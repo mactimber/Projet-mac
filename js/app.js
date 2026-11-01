@@ -2,8 +2,8 @@
 // 1. Parcelle  2. Symboles  3. Fiche de secours
 
 import { db, newChantier, uid } from './db.js';
-import { SYMBOLS, SYMBOL_BY_KIND, symbolSvg } from './symbols.js';
-import { symbolLayer, esc, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
+import { SYMBOLS, SYMBOL_BY_KIND, GROUPS, symbolSvg } from './symbols.js';
+import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
 import { renderFiche, closeFicheMap } from './fiche.js';
 import { wgs84ToLV95, formatLV95, parseCoordinates, polygonArea, formatArea, parcelCenter, pathLength, formatLength } from './swiss.js';
 
@@ -116,12 +116,28 @@ window.addEventListener('pagehide', saveNow);
 document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && saveNow());
 map.on('moveend', () => chantier && save(1500));
 
-/** Convertit un chantier de la 1re version (objets GeoJSON) vers le nouveau format. */
+/** Anciens symboles -> symboles actuels. */
+function migrateSymbols(list) {
+  const out = [];
+  for (const x of list || []) {
+    if (SYMBOL_BY_KIND[x.kind]) { out.push(x); continue; }
+    const map2 = { pharmacie: 'vehicule', danger: 'triopan', barrage: 'route_fermee', electrique: 'triopan', reseau: 'texte' };
+    if (x.kind === 'chute' && x.lat2 != null) out.push({ id: x.id, kind: 'abattage', lat: x.lat, lng: x.lng, angle: bearing([x.lat, x.lng], [x.lat2, x.lng2]) });
+    else if ((x.kind === 'travail' || x.kind === 'debardage') && x.lat2 != null) out.push({ ...x, kind: 'debut_vert' });
+    else if (map2[x.kind]) out.push({ ...x, kind: map2[x.kind], text: x.kind === 'reseau' ? 'Réseau mobile' : x.text });
+  }
+  return out;
+}
+
+/** Convertit un chantier d'une version précédente vers le format actuel. */
 function migrate(c) {
-  if (c.version === 2) return c;
+  if (c.version === 2) {
+    c.symbols = migrateSymbols(c.symbols);
+    return c;
+  }
   const out = newChantier(c.info?.name || 'Chantier');
   Object.assign(out, { id: c.id, created: c.created, view: c.view });
-  out.info = { ...out.info, name: c.info?.name, commune: [c.info?.commune, c.info?.lieu_dit].filter(Boolean).join(' – '), responsable: c.info?.responsable };
+  out.info = { ...out.info, name: c.info?.name, lieu: [c.info?.commune, c.info?.lieu_dit].filter(Boolean).join(' – '), responsable: c.info?.responsable };
   for (const f of c.features?.features || []) {
     const p = f.properties || {};
     const g = f.geometry;
@@ -173,7 +189,8 @@ function drawParcel() {
 function drawSymbols() {
   symbolGroup.clearLayers();
   for (const s of chantier.symbols) {
-    const layer = symbolLayer(s, { interactive: true, draggable: SYMBOL_BY_KIND[s.kind]?.mode === 'point' });
+    const def = SYMBOL_BY_KIND[s.kind];
+    const layer = symbolLayer(s, { interactive: true, draggable: def && (def.mode === 'point' || def.mode === 'wedge') });
     if (!layer) continue;
     layer.on('click', (e) => {
       if (placing) return;
@@ -190,6 +207,7 @@ function drawSymbols() {
           s.alt = null;
           fetchAltitude(s);
         }
+        if (def.coordLabel) layer.setIcon(symbolLayer(s).options.icon);
         save();
       });
     }
@@ -199,37 +217,38 @@ function drawSymbols() {
 
 function symbolPopup(s, latlng) {
   const def = SYMBOL_BY_KIND[s.kind];
+  const movable = def.mode === 'point' || def.mode === 'wedge';
   const div = document.createElement('div');
   div.className = 'sym-popup';
-  div.innerHTML = `<div class="sp-head">${symbolSvg(s.kind, 28)} <b>${esc(def.label)}</b></div>
-    ${def.mode === 'point' ? `<div class="sp-coord">${formatLV95(s.lat, s.lng)}${s.alt ? ` · ${Math.round(s.alt)} m` : ''}</div>` : ''}
+  div.innerHTML = `<div class="sp-head">${symbolSvg(s.kind, 26)} <b>${esc(def.label)}</b></div>
+    ${movable ? `<div class="sp-coord">${formatLV95(s.lat, s.lng)}${s.alt ? ` · ${Math.round(s.alt)} m` : ''}</div>` : ''}
     ${s.kind === 'heli' && s.manual && chantier.parcel ? '<button type="button" data-a="center">Remettre au milieu de la parcelle</button>' : ''}
-    ${s.kind === 'texte' ? '<button type="button" data-a="edit">Modifier le texte</button>' : ''}
-    ${def.mode === 'point' ? '<p class="sp-hint">Pour déplacer : glissez le symbole.</p>' : ''}
+    ${s.kind === 'abattage' ? '<button type="button" data-a="rotate">Changer la direction</button>' : ''}
+    ${def.mode === 'point' && !def.coordLabel ? `<button type="button" data-a="text">${s.text ? 'Modifier le texte' : 'Ajouter un texte'}</button>` : ''}
+    ${movable ? '<p class="sp-hint">Pour déplacer : glissez le symbole.</p>' : ''}
     <button type="button" data-a="del" class="danger">Supprimer</button>`;
-  const pop = L.popup({ closeButton: true, autoPan: true }).setLatLng(def.mode === 'point' ? [s.lat, s.lng] : latlng).setContent(div).openOn(map);
-  div.querySelector('[data-a=del]').addEventListener('click', () => {
-    chantier.symbols = chantier.symbols.filter((x) => x !== s);
+  const pop = L.popup({ autoPan: true }).setLatLng(movable ? [s.lat, s.lng] : latlng).setContent(div).openOn(map);
+  const act = (name, fn) => div.querySelector(`[data-a=${name}]`)?.addEventListener('click', () => {
     map.closePopup(pop);
+    fn();
     drawSymbols();
     save();
   });
-  div.querySelector('[data-a=center]')?.addEventListener('click', () => {
-    s.manual = false;
-    autoHeli(chantier);
-    map.closePopup(pop);
-    drawSymbols();
-    save();
+  act('del', () => { chantier.symbols = chantier.symbols.filter((x) => x !== s); });
+  act('center', () => { s.manual = false; autoHeli(chantier); });
+  act('text', () => {
+    const t = prompt('Texte affiché à côté du symbole :', s.text || '');
+    if (t !== null) s.text = t;
   });
-  div.querySelector('[data-a=edit]')?.addEventListener('click', () => {
-    const t = prompt('Texte :', s.text || '');
-    if (t === null) return;
-    s.text = t;
+  div.querySelector('[data-a=rotate]')?.addEventListener('click', () => {
     map.closePopup(pop);
-    drawSymbols();
-    save();
+    rotating = s;
+    $('#sheet').hidden = true;
+    hint('Touchez la direction de chute.', () => { rotating = null; hideHint(); });
   });
 }
+
+let rotating = null;
 
 /** Place automatiquement l'hélico au milieu de la parcelle (sauf si déplacé à la main). */
 function autoHeli(c) {
@@ -382,82 +401,120 @@ function setParcel(ring) {
 
 /* Étape 2 : symboles ------------------------------------------------- */
 
-let placing = null; // { kind, first? }
-let tempMarker = null;
+let placing = null; // { kind, first?, pts? }
+const tempGroup = L.layerGroup().addTo(map);
 
 function renderSymbolSheet() {
   $('#sheet-body').innerHTML = `
     <h2>2. Placer les symboles</h2>
-    <div class="palette">
-      ${SYMBOLS.map((s) => `<button type="button" data-kind="${s.kind}" class="${placing?.kind === s.kind ? 'on' : ''}">${symbolSvg(s.kind, 38)}<span>${esc(s.label)}</span></button>`).join('')}
-    </div>
+    ${GROUPS.map((g) => `<h3 class="pal-title">${esc(g)}</h3><div class="palette">
+      ${SYMBOLS.filter((s) => s.group === g).map((s) => `<button type="button" data-kind="${s.kind}">${symbolSvg(s.kind, 34)}<span>${esc(s.label)}</span></button>`).join('')}
+    </div>`).join('')}
     <div class="big-actions"><button type="button" id="s-next" class="primary">Suivant : fiche de secours →</button></div>`;
   $$('.palette button').forEach((b) => b.addEventListener('click', () => startPlacing(b.dataset.kind)));
   $('#s-next').addEventListener('click', () => openFiche());
 }
 
+function backToPalette() {
+  stopPlacing();
+  $('#sheet').hidden = false;
+  currentStep = 'symboles';
+  renderSymbolSheet();
+}
+
 function startPlacing(kind) {
   stopPlacing();
-  placing = { kind };
   const def = SYMBOL_BY_KIND[kind];
+  placing = { kind, pts: [] };
   map.getContainer().classList.add('placing');
   $('#sheet').hidden = true;
   hint(def.hint, () => {
-    stopPlacing();
-    $('#sheet').hidden = false;
-    renderSymbolSheet();
+    if (def.mode === 'line' && placing?.pts.length >= 2) finishLine();
+    backToPalette();
   });
 }
 
 function stopPlacing() {
   placing = null;
-  if (tempMarker) map.removeLayer(tempMarker);
-  tempMarker = null;
+  tempGroup.clearLayers();
   map.getContainer().classList.remove('placing');
   hideHint();
 }
 
+function finishLine() {
+  const def = SYMBOL_BY_KIND[placing.kind];
+  chantier.symbols.push({ id: uid(), kind: def.kind, pts: placing.pts.map((p) => [p.lat, p.lng]) });
+  placing.pts = [];
+  tempGroup.clearLayers();
+  drawSymbols();
+  save();
+}
+
 map.on('click', (e) => {
+  const ll = e.latlng;
+  if (rotating) {
+    rotating.angle = bearing([rotating.lat, rotating.lng], ll);
+    rotating = null;
+    hideHint();
+    drawSymbols();
+    save();
+    return;
+  }
   if (!placing) return;
   const def = SYMBOL_BY_KIND[placing.kind];
-  const ll = e.latlng;
-  if (def.mode === 'arrow') {
+
+  if (def.mode === 'wedge' || def.mode === 'arrow') {
     if (!placing.first) {
       placing.first = ll;
-      tempMarker = L.circleMarker(ll, { radius: 7, color: def.color, fillOpacity: 0.6 }).addTo(map);
-      $('#hint-text').textContent = def.kind === 'chute' ? 'Touchez maintenant l\'endroit où l\'arbre doit tomber.' : 'Touchez maintenant la direction.';
+      L.circleMarker(ll, { radius: 7, color: '#111', fillColor: def.color || '#1f9a3a', fillOpacity: 0.8 }).addTo(tempGroup);
+      $('#hint-text').textContent = def.mode === 'wedge' ? 'Touchez maintenant la direction de chute.' : 'Touchez maintenant la direction du travail.';
       return;
     }
-    chantier.symbols.push({ id: uid(), kind: def.kind, lat: placing.first.lat, lng: placing.first.lng, lat2: ll.lat, lng2: ll.lng });
+    const a = placing.first;
+    if (def.mode === 'wedge') chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, angle: bearing(a, ll) });
+    else chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, lat2: ll.lat, lng2: ll.lng });
     placing.first = null;
-    if (tempMarker) map.removeLayer(tempMarker);
-    tempMarker = null;
-    $('#hint-text').textContent = `${def.hint} (encore)`;
-  } else {
-    const s = { id: uid(), kind: def.kind, lat: ll.lat, lng: ll.lng };
-    if (def.kind === 'texte') {
-      const t = prompt('Texte à afficher :', '');
-      if (!t) return;
-      s.text = t;
+    tempGroup.clearLayers();
+    drawSymbols();
+    save();
+    if (def.mode === 'arrow') return backToPalette();
+    $('#hint-text').textContent = 'Arbre suivant : touchez l\'arbre, puis la direction.';
+    return;
+  }
+
+  if (def.mode === 'line') {
+    placing.pts.push(ll);
+    tempGroup.clearLayers();
+    L.polyline(placing.pts, { color: def.color, weight: def.weight, dashArray: '6 6' }).addTo(tempGroup);
+    placing.pts.forEach((p) => L.circleMarker(p, { radius: 6, color: '#111', weight: 2, fillColor: '#fff', fillOpacity: 1 }).addTo(tempGroup));
+    if (def.maxPts && placing.pts.length >= def.maxPts) {
+      finishLine();
+      $('#hint-text').textContent = def.kind === 'layon' ? 'Layon suivant : touchez le début, puis la fin.' : def.hint;
+      if (def.kind === 'distance') backToPalette();
+      return;
     }
-    if (def.unique) {
-      chantier.symbols = chantier.symbols.filter((x) => x.kind !== def.kind);
+    $('#hint-text').textContent = placing.pts.length < 2 ? 'Touchez le point suivant.' : `${placing.pts.length} points. Touchez le suivant, ou « Terminer ».`;
+    return;
+  }
+
+  // Symbole ponctuel
+  const s = { id: uid(), kind: def.kind, lat: ll.lat, lng: ll.lng };
+  if (def.askText !== undefined) {
+    const t = prompt(def.kind === 'texte' ? 'Texte à afficher :' : 'Texte à afficher (facultatif) :', def.askText);
+    if (t === null || (def.kind === 'texte' && !t)) return;
+    s.text = t;
+  }
+  if (def.unique) {
+    chantier.symbols = chantier.symbols.filter((x) => x.kind !== def.kind);
+    if (def.kind === 'heli') {
       s.manual = true;
       fetchAltitude(s);
     }
-    chantier.symbols.push(s);
-    if (def.unique || ['point_t', 'vehicule', 'pharmacie'].includes(def.kind)) {
-      // Symboles en principe uniques : on revient à la palette
-      drawSymbols();
-      save();
-      stopPlacing();
-      $('#sheet').hidden = false;
-      renderSymbolSheet();
-      return;
-    }
   }
+  chantier.symbols.push(s);
   drawSymbols();
   save();
+  if (def.unique || def.kind === 'vehicule') backToPalette();
 });
 
 /* Étape 3 : fiche de secours ---------------------------------------- */

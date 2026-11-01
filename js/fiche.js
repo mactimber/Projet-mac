@@ -40,14 +40,15 @@ export function renderFiche(root, chantier, opt) {
         : `<input type="${type}" data-key="${key}" value="${esc(info[key] || '')}" placeholder="${esc(ph)}">`}
     </label>`;
 
-  const coordRow = (kind, title) => {
+  const coordLine = (kind, title) => {
     const list = sym(kind);
-    return `<tr><th>${symbolSvg(kind, 26)} ${esc(title)}</th><td>${list.length
-      ? list.map(coordBlock).join('<hr>')
-      : '<span class="missing">à placer sur la carte (étape 2)</span>'}</td></tr>`;
+    return `<div class="f-row f-coordrow"><span>${symbolSvg(kind, 20)} ${title}</span><div class="f-val">${list.length
+      ? list.map(coordBlock).join('')
+      : '<span class="missing">à placer sur la carte (étape 2)</span>'}</div></div>`;
   };
 
   const kindsUsed = SYMBOLS.filter((d) => chantier.symbols.some((s) => s.kind === d.kind) && d.kind !== 'texte');
+  const legendIcon = (d) => symbolSvg(d.kind, d.mode === 'point' && !['heli', 'point_t'].includes(d.kind) ? 20 : 18);
   const area = chantier.parcel ? formatArea(polygonArea(L.polygon(chantier.parcel))).split(' (')[0] : '';
 
   root.innerHTML = `
@@ -73,45 +74,44 @@ export function renderFiche(root, chantier, opt) {
       </div>
     </header>
 
-    <section class="f-urgence">
-      <div class="f-urg-title">EN CAS D'URGENCE</div>
-      <div class="f-nums">${NUMEROS.map(([n, l]) => `<div><b>${n}</b><span>${l}</span></div>`).join('')}</div>
-    </section>
-
     <section class="f-cols">
-      <div class="f-box f-coords">
-        <h3>Coordonnées pour les secours</h3>
-        <table>
-          ${coordRow('heli', 'Place hélico')}
-          ${coordRow('point_t', 'Point de rencontre')}
-          ${coordRow('vehicule', 'Véhicule')}
-          ${coordRow('pharmacie', 'Pharmacie')}
-        </table>
-        <p class="f-small">Coordonnées suisses LV95 (E / N) et GPS (WGS84).${heli && !heli.manual ? ' Place hélico : milieu de la parcelle.' : ''}</p>
+    <div class="f-suva">
+      <h3>Numéros d'urgence</h3>
+      <div class="f-nums">${NUMEROS.map(([n, l]) => `<div><span>${l}</span><b>${n}</b></div>`).join('')}</div>
+      <div class="f-contacts">
+        <div class="f-row"><span>Médecin</span><input data-key="medecin" value="${esc(info.medecin || '')}" placeholder="Nom – téléphone"></div>
+        <div class="f-row"><span>Hôpital</span><input data-key="hopital" value="${esc(info.hopital || '')}" placeholder="Nom – téléphone"></div>
+        <div class="f-row"><span>Lieu-dit</span><input data-key="lieu" value="${esc(info.lieu || info.commune || '')}" placeholder="Lieu-dit, commune"></div>
       </div>
-      <div class="f-box f-alarme">
-        <h3>Donner l'alarme</h3>
-        <ol>
-          <li><b>Qui</b> appelle ? (nom, n° de téléphone)</li>
-          <li><b>Où</b> ? Lire les <b>coordonnées</b> de la place hélico</li>
-          <li><b>Quoi</b> ? Que s'est-il passé ?</li>
-          <li><b>Combien</b> de blessés ? Quelles blessures ?</li>
-          <li><b>Quand</b> ?</li>
-          <li><b>Autres</b> : câbles, lignes électriques, météo, vent</li>
-        </ol>
-        <p class="f-small">Rester joignable. Ne pas raccrocher le premier. Envoyer quelqu'un au point de rencontre.</p>
+      <h3>Coordonnées ou adresse</h3>
+      <div class="f-contacts">
+        ${coordLine('heli', 'Pour sauvetage aérien')}
+        ${coordLine('point_t', 'Pour sauvetage terrestre <small>(point de rencontre)</small>')}
+        ${coordLine('vehicule', 'Véhicule + pharmacie')}
       </div>
+    </div>
+
+    <div class="f-box f-alarme">
+      <h3>Donner l'alarme</h3>
+      <ol>
+        <li><b>Qui</b> appelle ? (nom, n° de téléphone)</li>
+        <li><b>Où</b> ? Lire les <b>coordonnées</b> (aérien / terrestre)</li>
+        <li><b>Quoi</b> ? Que s'est-il passé ?</li>
+        <li><b>Combien</b> de blessés ? Quelles blessures ?</li>
+        <li><b>Quand</b> ?</li>
+        <li><b>Autres</b> : câbles, lignes électriques, météo, vent</li>
+      </ol>
+      <p class="f-small">Rester joignable. Ne pas raccrocher le premier. Envoyer quelqu'un au point de rencontre (T).</p>
+    </div>
     </section>
 
     <section class="f-box f-org">
       <h3>Organisation</h3>
       <div class="f-grid">
-        ${field('commune', 'Commune / lieu-dit')}
         ${field('travaux', 'Travaux', { ph: 'Coupe, éclaircie, chablis…' })}
         ${field('responsable', 'Responsable')}
         ${field('resp_tel', 'Tél. responsable', { type: 'tel' })}
         ${field('secouriste', 'Secouriste')}
-        ${field('hopital', 'Hôpital le plus proche')}
       </div>
       <div class="f-grid f-grid3">
         ${field('equipe', 'Équipe (nom – téléphone)', { multi: true })}
@@ -122,10 +122,14 @@ export function renderFiche(root, chantier, opt) {
 
     <section class="f-box f-plan">
       <h3>Plan de coupe${area ? ` <small>· parcelle ${esc(area)}</small>` : ''}</h3>
-      <div id="fiche-map"></div>
+      <div class="f-mapwrap">
+        <div id="fiche-map"></div>
+        <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
+        <div class="f-ratio" id="f-ratio"></div>
+      </div>
       <div class="f-legend">
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
-        ${kindsUsed.map((d) => `<span>${symbolSvg(d.kind, 22)}${esc(d.label)}</span>`).join('')}
+        ${kindsUsed.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}
       </div>
     </section>
 
@@ -163,6 +167,7 @@ export function renderFiche(root, chantier, opt) {
     doubleClickZoom: true,
     touchZoom: true,
     tap: false,
+    zoomSnap: 0.25,
   });
   ficheMap.attributionControl.setPrefix(false);
   opt.makeBaseLayer().addTo(ficheMap);
@@ -173,19 +178,22 @@ export function renderFiche(root, chantier, opt) {
   }
   for (const s of chantier.symbols) symbolLayer(s, { interactive: false })?.addTo(ficheMap);
   fitFicheMap(chantier);
+  ficheMap.on('zoomend', updateRatio);
 }
 
 function fitFicheMap(chantier) {
   if (!ficheMap) return;
-  ficheMap.invalidateSize();
+  ficheMap.invalidateSize({ animate: false, pan: false });
   const pts = [...(chantier.parcel || [])];
   for (const s of chantier.symbols) {
-    pts.push([s.lat, s.lng]);
+    if (s.lat != null) pts.push([s.lat, s.lng]);
     if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
+    if (s.pts) pts.push(...s.pts);
   }
-  if (pts.length > 1) ficheMap.fitBounds(L.latLngBounds(pts).pad(0.12), { maxZoom: 18 });
-  else if (pts.length === 1) ficheMap.setView(pts[0], 17);
-  else ficheMap.setView([46.8, 8.2], 8);
+  if (pts.length > 1) ficheMap.fitBounds(L.latLngBounds(pts).pad(0.08), { maxZoom: 18, animate: false });
+  else if (pts.length === 1) ficheMap.setView(pts[0], 17, { animate: false });
+  else ficheMap.setView([46.8, 8.2], 8, { animate: false });
+  updateRatio();
 }
 
 /** Passe en mise en page A4, recadre la carte, attend les fonds de carte puis imprime. */
@@ -209,6 +217,18 @@ window.addEventListener('afterprint', () => {
   root.classList.remove('print-layout');
   ficheMap?.invalidateSize();
 });
+
+/** Échelle approximative du plan (1 : N) d'après le zoom et la taille à l'écran / sur papier. */
+function updateRatio() {
+  const el = document.getElementById('f-ratio');
+  if (!el || !ficheMap) return;
+  const lat = ficheMap.getCenter().lat;
+  const mPerPx = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** ficheMap.getZoom());
+  const ratio = mPerPx / (0.0254 / 96);
+  const nice = [250, 500, 700, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 7500, 10000, 15000, 20000, 25000, 50000, 100000];
+  const r = nice.reduce((best, x) => (Math.abs(Math.log(x / ratio)) < Math.abs(Math.log(best / ratio)) ? x : best), nice[0]);
+  el.textContent = `Échelle ≈ 1 : ${r.toLocaleString('fr-CH')}`;
+}
 
 export function closeFicheMap() {
   if (ficheMap) ficheMap.remove();
