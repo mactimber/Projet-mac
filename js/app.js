@@ -5,6 +5,7 @@ import { db, newChantier, uid } from './db.js';
 import { SYMBOLS, SYMBOL_BY_KIND, GROUPS, ZONE_COLORS, symbolSvg } from './symbols.js';
 import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
 import { renderFiche, closeFicheMap } from './fiche.js';
+import { lookupPlace } from './place.js';
 import { wgs84ToLV95, formatLV95, parseCoordinates, polygonArea, formatArea, parcelCenter, pathLength, formatLength } from './swiss.js';
 
 const $ = (s) => document.querySelector(s);
@@ -207,6 +208,7 @@ function drawSymbols() {
           s.alt = null;
           fetchAltitude(s);
         }
+        if (s.kind === 'heli' || s.kind === 'point_t') fetchPlace(s);
         if (def.coordLabel) layer.setIcon(symbolLayer(s).options.icon);
         save();
       });
@@ -271,6 +273,21 @@ function autoHeli(c) {
   h.manual = false;
   h.alt = null;
   fetchAltitude(h);
+  fetchPlace(h);
+}
+
+/** Lieu-dit / commune (et adresse pour le point T) d'après la carte. */
+async function fetchPlace(s) {
+  const pos = `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`;
+  s.placeFor = pos;
+  try {
+    const p = await lookupPlace(s.lat, s.lng, { adresse: s.kind === 'point_t' });
+    if (s.placeFor !== pos) return; // le point a bougé entre-temps
+    if (p.label) {
+      s.place = p.label;
+      save();
+    }
+  } catch { /* hors-ligne */ }
 }
 
 async function fetchAltitude(s) {
@@ -546,6 +563,7 @@ map.on('click', (e) => {
       s.manual = true;
       fetchAltitude(s);
     }
+    if (def.kind === 'heli' || def.kind === 'point_t') fetchPlace(s);
   }
   chantier.symbols.push(s);
   drawSymbols();
@@ -555,8 +573,13 @@ map.on('click', (e) => {
 
 /* Étape 3 : fiche de secours ---------------------------------------- */
 
-function openFiche() {
+async function openFiche() {
   closeSheet();
+  // Compléter les noms de lieu manquants (chantiers créés avant cette fonction), sans attendre plus de 3 s
+  const missing = chantier.symbols.filter((x) => (x.kind === 'heli' || x.kind === 'point_t') && !x.place);
+  if (missing.length && navigator.onLine !== false) {
+    await Promise.race([Promise.all(missing.map(fetchPlace)), new Promise((r) => setTimeout(r, 3000))]);
+  }
   saveNow();
   const root = $('#fiche');
   root.hidden = false;

@@ -64,6 +64,12 @@ export function renderFiche(root, chantier, opt) {
   if (info.mesures === undefined && typeof info.dangers === 'string') info.mesures = info.dangers; // ancienne case « Dangers et mesures »
   const coches = new Set(Array.isArray(info.dangers_coches) ? info.dangers_coches : []);
   const T = sym('point_t')[0];
+  // Case remplie depuis la carte (lieu-dit, commune, adresse) tant qu'on ne l'a pas modifiée soi-même
+  const placeRow = (key, label, point, ph) => `
+    <div class="f-row"><span>${label}</span><div class="f-auto">
+      <input data-key="${key}" value="${esc(info[key] ?? point?.place ?? point?.text ?? '')}" placeholder="${esc(ph)}">
+      ${point?.place ? `<button type="button" class="f-refresh no-print" data-refresh="${key}" data-place="${esc(point.place)}" title="Reprendre depuis la carte" aria-label="Reprendre depuis la carte">↻</button>` : ''}
+    </div></div>`;
 
   root.innerHTML = `
   <div class="fiche-bar no-print">
@@ -125,11 +131,12 @@ export function renderFiche(root, chantier, opt) {
       </div>
       <h3>Sauvetage aérien <small>(milieu du lieu d'abattage)</small></h3>
       <div class="f-contacts">
+        ${placeRow('lieu_h', 'Lieu-dit', heli, 'ex. Alpage de Tracuit, Chalais')}
         ${coordLine('heli', 'Coordonnées H')}
       </div>
       <h3>Sauvetage terrestre <small>(point T)</small></h3>
       <div class="f-contacts">
-        <div class="f-row"><span>Localité</span><input data-key="localite_t" value="${esc(info.localite_t ?? (T?.text || ''))}" placeholder="ex. Les Ziettes / Vercorin"></div>
+        ${placeRow('localite_t', 'Lieu / adresse', T, 'ex. Les Ziettes, Vercorin')}
         ${coordLine('point_t', 'Coordonnées T')}
       </div>
     </div>
@@ -172,6 +179,13 @@ export function renderFiche(root, chantier, opt) {
       </div>
     </section>
   </article>`;
+
+  root.querySelectorAll('[data-refresh]').forEach((b) => b.addEventListener('click', () => {
+    const input = root.querySelector(`[data-key="${b.dataset.refresh}"]`);
+    input.value = b.dataset.place;
+    info[b.dataset.refresh] = b.dataset.place;
+    opt.onChange();
+  }));
 
   root.querySelectorAll('[data-danger]').forEach((cb) => cb.addEventListener('change', () => {
     info.dangers_coches = [...root.querySelectorAll('[data-danger]:checked')].map((x) => x.dataset.danger);

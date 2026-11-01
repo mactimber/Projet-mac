@@ -333,3 +333,6 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .print-layout .page + .page { margin-top: 0; }
 @media print { .page-plan { break-before: page; } .f-work, .f-cols { break-inside: avoid; } }
 .print-layout input.is-empty { color: transparent; }
+.f-auto { display: flex; gap: 4px; align-items: stretch; min-width: 0; }
+.f-auto input { flex: 1; min-width: 0; }
+.f-refresh { min-height: 0; padding: 0 8px; font-size: 16px; border: 1.5px solid #333; border-radius: 4px; background: #fff; }
