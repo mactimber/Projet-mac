@@ -257,7 +257,7 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .print-layout .f-box { margin-top: 6px; padding: 5px 8px; }
 .print-layout .page .f-title { font-size: 20px; }
 .print-layout .f-nums { grid-template-columns: repeat(2, 1fr); }
-.print-layout #fiche-map { width: 100%; height: 66mm; }
+.print-layout #fiche-map { width: 100%; height: 88mm; }
 .print-layout .f-coords td { padding: 1px 0; }
 .print-layout .c-lv95 { font-size: 13px; }
 .print-layout .f-legend { margin-top: 3px; gap: 2px 10px; font-size: 10.5px; }
@@ -288,4 +288,18 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .brand-logo { height: 54px; width: auto; }
 .brand-title { font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .f-logo { height: 20mm; width: auto; margin-left: 4mm; align-self: center; }
-@media (max-width: 600px) { .f-logo { height: 56px; } }
+@media (max-width: 600px) {
+  .f-logo { height: 56px; }
+  .f-head { flex-wrap: wrap; align-items: center; }
+  .f-head > div:first-child { flex: 1 1 100%; }
+  .f-head-right { flex: 1; width: auto; }
+  .f-row { grid-template-columns: 1fr; gap: 2px; }
+  .page .f-row input { font-size: 15px; }
+}
+/* En impression : en-tête et lignes toujours sur une ligne, comme sur ordinateur */
+.print-layout .f-head { flex-wrap: nowrap; align-items: flex-end; }
+.print-layout .f-head > div:first-child { flex: 1; }
+.print-layout .f-head-right { flex: none; width: 40mm; }
+.print-layout .f-row { grid-template-columns: 30% 1fr; gap: 6px; }
+.print-layout .page .f-row input { font-size: 12.5px; }
+.print-layout .f-logo { height: 20mm; }

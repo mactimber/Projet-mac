@@ -5,7 +5,8 @@ import { symbolLayer, esc, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js'
 import { wgs84ToLV95, polygonArea, formatArea } from './swiss.js';
 
 /** Contacts habituels du Triage forestier du Vallon. */
-export const DEFAUT_MEDECIN = 'Dr Philippe Candelier, Chalais – 027 458 31 81';
+export const DEFAUT_MEDECIN = 'Dr P. Candelier – 027 458 31 81';
+const ANCIEN_MEDECIN = 'Dr Philippe Candelier, Chalais – 027 458 31 81';
 export const DEFAUT_HOPITAL = 'Hôpital de Sion – 027 603 40 00';
 
 const NUMEROS = [
@@ -35,7 +36,7 @@ let ficheMap = null;
 export function renderFiche(root, chantier, opt) {
   const info = chantier.info;
   // Valeurs habituelles du triage (modifiables sur la fiche ; une case vidée reste vide)
-  if (info.medecin === undefined) info.medecin = DEFAUT_MEDECIN;
+  if (info.medecin === undefined || info.medecin === ANCIEN_MEDECIN) info.medecin = DEFAUT_MEDECIN;
   if (info.hopital === undefined) info.hopital = DEFAUT_HOPITAL;
   const sym = (kind) => chantier.symbols.filter((s) => s.kind === kind);
   const heli = sym('heli')[0];
@@ -141,10 +142,6 @@ export function renderFiche(root, chantier, opt) {
       </div>
     </section>
 
-    <section class="f-box f-sign">
-      <h3>Lu et compris</h3>
-      <table><tr><th>Nom</th><th>Date</th><th>Signature</th></tr>${'<tr><td></td><td></td><td></td></tr>'.repeat(2)}</table>
-    </section>
   </article>`;
 
   // Champs : enregistrement automatique
