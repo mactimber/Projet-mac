@@ -355,3 +355,8 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .f-legend .lg-img { display: inline-flex; align-items: center; gap: 4px; }
 .f-legend .lg-img img { max-height: 22px; width: auto; }
 .print-layout .f-legend .lg-img img { max-height: 18px; }
+.ff > span .mic {
+  min-height: 0; width: 34px; height: 30px; padding: 0; margin-left: 8px; vertical-align: middle;
+  border: 1.5px solid var(--border); border-radius: 15px; background: #fff; font-size: 15px;
+}
+.ff > span .mic.on { background: var(--red); border-color: var(--red); animation: blink 1s infinite; }

@@ -54,6 +54,54 @@ function coordBlock(s) {
 
 let ficheMap = null;
 
+/* Dictée vocale (reconnaissance de la parole du navigateur, en français) */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const DICTEE = !!SR;
+let dictee = null; // { rec, btn }
+
+function stopDictee() {
+  if (!dictee) return;
+  dictee.rec.stop();
+  dictee.btn.classList.remove('on');
+  dictee = null;
+}
+
+/** Écoute et ajoute le texte dicté à la fin de la case. */
+function startDictee(btn, textarea) {
+  const same = dictee?.btn === btn;
+  stopDictee();
+  if (same) return;
+  const rec = new SR();
+  rec.lang = 'fr-CH';
+  rec.interimResults = true;
+  rec.continuous = true;
+  const base = textarea.value.trim();
+  let final = '';
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += `${t.trim()} `;
+      else interim += t;
+    }
+    let dit = `${final}${interim}`.trim();
+    if (dit) dit = dit[0].toUpperCase() + dit.slice(1);
+    textarea.value = [base, dit].filter(Boolean).join(base && !/[.\n]$/.test(base) ? '. ' : '\n');
+    textarea.dispatchEvent(new Event('input'));
+  };
+  rec.onerror = (e) => {
+    if (e.error === 'not-allowed') alert('Autorisez le micro pour cette application (réglages du navigateur).');
+    else if (e.error === 'network') alert('La dictée a besoin du réseau.');
+  };
+  rec.onend = () => {
+    if (dictee?.rec === rec) stopDictee();
+  };
+  dictee = { rec, btn };
+  btn.classList.add('on');
+  rec.start();
+}
+
+
 /**
  * @param {HTMLElement} root
  * @param {object} chantier
@@ -72,7 +120,7 @@ export function renderFiche(root, chantier, opt) {
   const heli = sym('heli')[0];
 
   const field = (key, label, { multi = false, ph = '', type = 'text' } = {}) => `
-    <label class="ff ${multi ? 'ff-multi' : ''}"><span>${esc(label)}</span>
+    <label class="ff ${multi ? 'ff-multi' : ''}"><span>${esc(label)}${multi && DICTEE ? `<button type="button" class="mic no-print" data-mic="${key}" aria-label="Dicter : ${esc(label)}">🎤</button>` : ''}</span>
       ${multi
         ? `<textarea data-key="${key}" rows="1" placeholder="${esc(ph)}">${esc(info[key] || '')}</textarea>`
         : `<input type="${type}" data-key="${key}" value="${esc(info[key] || '')}" placeholder="${esc(ph)}">`}
@@ -283,6 +331,11 @@ export function renderFiche(root, chantier, opt) {
     opt.onChange();
   }));
 
+  root.querySelectorAll('[data-mic]').forEach((b) => b.addEventListener('click', (e) => {
+    e.preventDefault();
+    startDictee(b, root.querySelector(`textarea[data-key="${b.dataset.mic}"]`));
+  }));
+
   // Champs : enregistrement automatique
   root.querySelectorAll('[data-key]').forEach((el) => {
     const grow = () => {
@@ -377,6 +430,7 @@ function updateRatio() {
 }
 
 export function closeFicheMap() {
+  stopDictee();
   if (ficheMap) ficheMap.remove();
   ficheMap = null;
 }
