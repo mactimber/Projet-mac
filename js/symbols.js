@@ -29,7 +29,6 @@ const POINT_SVG = {
   trois_lattes: [22, 52, `<path d="M11 1.5L20 16H2Z" fill="#fff" stroke="${RED}" stroke-width="2" stroke-linejoin="round"/><path d="M9.6 7h2.8v4.5H9.6zM9.6 12.6h2.8v1.8H9.6z" fill="#111"/>
     <g stroke="#555" stroke-width=".6">${[2, 8.5, 15].map((x) => `<rect x="${x}" y="18" width="5" height="33" fill="#fff"/>${[18, 26, 34, 42].map((y) => `<rect x="${x}" y="${y}" width="5" height="4" fill="${RED}"/>`).join('')}`).join('')}</g>
     <circle cx="11" cy="30" r="5.5" fill="#fff" stroke="${RED}" stroke-width="2"/><text x="11" y="32.2" font-size="6" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">60</text>`],
-  route_fermee: [60, 26, `<path d="M4 15H56M4 5V25M56 5V25" stroke="${RED}" stroke-width="3" fill="none"/><path d="M30 3.5L39.5 21H20.5Z" fill="#fff" stroke="${RED}" stroke-width="2.6" stroke-linejoin="round"/><rect x="29" y="9" width="2" height="6" fill="#111"/><circle cx="30" cy="17.6" r="1.3" fill="#111"/>`],
   barriere: [50, 26, '<rect x="2" y="9" width="9" height="15" rx="1.5" fill="#111"/><path d="M11 13L47 4" stroke="#111" stroke-width="5" stroke-linecap="round"/><path d="M11 13L47 4" stroke="#fff" stroke-width="2.6" stroke-dasharray="4 4"/>'],
   bache: [72, 30, `<rect x="1" y="1" width="70" height="28" fill="#fff" stroke="${RED}" stroke-width="1.5"/>
     <path d="M2 3.5H70M2 26.5H70" stroke="${RED}" stroke-width="3" stroke-dasharray="3 3"/>
@@ -41,8 +40,8 @@ const POINT_SVG = {
   camion_grue: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#1b5e86" stroke="#111" stroke-width="2.5"/>
     <g fill="#fff"><rect x="7" y="22" width="19" height="5.5" rx="1"/><path d="M26 27.5V18h4.5l3 4.5v5z"/><circle cx="11.5" cy="29.5" r="2.4"/><circle cx="29.5" cy="29.5" r="2.4"/></g>
     <path d="M12 22L28 9.5M28 9.5v6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>`],
-  pile: [60, 32, `<path d="M2 5L55 1.5L58 14L6 30Z" fill="#4e3418" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/>
-    <path d="M3.5 5.5L56.8 7.6L6.5 28.8" stroke="#e8e8e8" stroke-width="1.6" stroke-linejoin="round" fill="none"/>`],
+  pile: [60, 32, `<path d="M2 2L57 5.5L58 25L4 30Z" fill="#4e3418" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M3 3L57.4 15.2L4.6 29" stroke="#e8e8e8" stroke-width="1.6" stroke-linejoin="round" fill="none"/>`],
   depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
@@ -73,9 +72,8 @@ export const SYMBOLS = [
   // --- Signalisation
   { kind: 'triopan', group: 'Signalisation', label: 'Triopan', mode: 'point', hint: 'Touchez l\'emplacement du Triopan.' },
   { kind: 'trois_lattes', group: 'Signalisation', label: 'Trois lattes', mode: 'point', hint: 'Touchez l\'emplacement des trois lattes.' },
-  { kind: 'route_fermee', group: 'Signalisation', label: 'Route fermée', mode: 'point', askText: 'Fermé à 200 m', hint: 'Touchez l\'endroit de la fermeture.' },
   { kind: 'barriere', group: 'Signalisation', label: 'Barrière', mode: 'point', hint: 'Touchez l\'emplacement de la barrière.' },
-  { kind: 'bache', group: 'Signalisation', label: 'Bâche interdiction', mode: 'point', hint: 'Touchez l\'emplacement de la bâche.' },
+  { kind: 'bache', group: 'Signalisation', label: 'Route fermée', mode: 'point', askText: '', hint: 'Touchez l\'endroit de la fermeture (bâche).' },
   { kind: 'texte', group: 'Signalisation', label: 'Texte', mode: 'point', askText: '', hint: 'Touchez la carte pour placer un texte.' },
 ];
 
@@ -115,7 +113,7 @@ export function symbolSvg(kind, height = 36) {
 
 /** Taille d'affichage sur la carte (hauteur en px). */
 export function mapHeight(kind) {
-  return { trois_lattes: 44, bache: 26, route_fermee: 22, barriere: 22, helico: 26, vehicule: 30, pile: 26, depot: 14 }[kind] || 30;
+  return { trois_lattes: 44, bache: 26, barriere: 22, helico: 26, vehicule: 30, pile: 28, depot: 14 }[kind] || 30;
 }
 
 /** Tête de flèche pointant vers le haut. */

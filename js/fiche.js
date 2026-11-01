@@ -61,7 +61,6 @@ export function renderFiche(root, chantier, opt) {
 
   <div class="fiche-calls no-print">
     <a href="tel:144" class="call c144"><b>144</b> Ambulance</a>
-    <a href="tel:1414" class="call c1414"><b>1414</b> Rega</a>
   </div>
 
   <article class="page">
@@ -88,7 +87,6 @@ export function renderFiche(root, chantier, opt) {
       <div class="f-contacts">
         ${coordLine('heli', 'Pour sauvetage aérien')}
         ${coordLine('point_t', 'Pour sauvetage terrestre <small>(point de rencontre)</small>')}
-        ${coordLine('vehicule', 'Véhicule + pharmacie')}
       </div>
     </div>
 

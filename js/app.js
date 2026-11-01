@@ -121,7 +121,7 @@ function migrateSymbols(list) {
   const out = [];
   for (const x of list || []) {
     if (SYMBOL_BY_KIND[x.kind]) { out.push(x); continue; }
-    const map2 = { pharmacie: 'vehicule', danger: 'triopan', barrage: 'route_fermee', electrique: 'triopan', reseau: 'texte', debut_violet: 'debut_vert' };
+    const map2 = { pharmacie: 'vehicule', danger: 'triopan', barrage: 'bache', route_fermee: 'bache', electrique: 'triopan', reseau: 'texte', debut_violet: 'debut_vert' };
     if (x.kind === 'chute' && x.lat2 != null) out.push({ id: x.id, kind: 'abattage', lat: x.lat, lng: x.lng, angle: bearing([x.lat, x.lng], [x.lat2, x.lng2]) });
     else if ((x.kind === 'travail' || x.kind === 'debardage') && x.lat2 != null) out.push({ ...x, kind: 'debut_vert' });
     else if (map2[x.kind]) out.push({ ...x, kind: map2[x.kind], text: x.kind === 'reseau' ? 'Réseau mobile' : x.text });

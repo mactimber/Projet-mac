@@ -177,7 +177,7 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
   position: sticky; top: 0; z-index: 10; display: flex; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
   background: var(--green); box-shadow: var(--shadow);
 }
-.fiche-calls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; max-width: 210mm; margin: 0 auto; }
+.fiche-calls { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 10px; max-width: 210mm; margin: 0 auto; }
 .call {
   display: flex; flex-direction: column; align-items: center; padding: 10px; border-radius: 12px; text-decoration: none; color: #fff; font-size: 14px;
 }
@@ -283,3 +283,4 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .sym .sym-label-free { border: 0; background: rgba(255,255,255,.75); font-size: 13px; padding: 0 3px; }
 .sym-tag.tag-zone span { font-size: 12px; border-width: 2px; border-radius: 4px; background: rgba(255,255,255,.92); }
 .lg-zone { display: inline-block; width: 18px; height: 12px; border: 2px dashed; }
+.f-legend svg { max-width: 34px; height: auto; }
