@@ -121,7 +121,7 @@ function migrateSymbols(list) {
   const out = [];
   for (const x of list || []) {
     if (SYMBOL_BY_KIND[x.kind]) { out.push(x); continue; }
-    const map2 = { pharmacie: 'vehicule', danger: 'triopan', barrage: 'route_fermee', electrique: 'triopan', reseau: 'texte' };
+    const map2 = { pharmacie: 'vehicule', danger: 'triopan', barrage: 'route_fermee', electrique: 'triopan', reseau: 'texte', debut_violet: 'debut_vert' };
     if (x.kind === 'chute' && x.lat2 != null) out.push({ id: x.id, kind: 'abattage', lat: x.lat, lng: x.lng, angle: bearing([x.lat, x.lng], [x.lat2, x.lng2]) });
     else if ((x.kind === 'travail' || x.kind === 'debardage') && x.lat2 != null) out.push({ ...x, kind: 'debut_vert' });
     else if (map2[x.kind]) out.push({ ...x, kind: map2[x.kind], text: x.kind === 'reseau' ? 'Réseau mobile' : x.text });
@@ -190,7 +190,7 @@ function drawSymbols() {
   symbolGroup.clearLayers();
   for (const s of chantier.symbols) {
     const def = SYMBOL_BY_KIND[s.kind];
-    const layer = symbolLayer(s, { interactive: true, draggable: def && (def.mode === 'point' || def.mode === 'wedge') });
+    const layer = symbolLayer(s, { interactive: true, draggable: def && ['point', 'wedge', 'orient'].includes(def.mode) });
     if (!layer) continue;
     layer.on('click', (e) => {
       if (placing) return;
@@ -217,14 +217,14 @@ function drawSymbols() {
 
 function symbolPopup(s, latlng) {
   const def = SYMBOL_BY_KIND[s.kind];
-  const movable = def.mode === 'point' || def.mode === 'wedge';
+  const movable = ['point', 'wedge', 'orient'].includes(def.mode);
   const div = document.createElement('div');
   div.className = 'sym-popup';
   div.innerHTML = `<div class="sp-head">${symbolSvg(s.kind, 26)} <b>${esc(def.label)}</b></div>
     ${movable ? `<div class="sp-coord">${formatLV95(s.lat, s.lng)}${s.alt ? ` · ${Math.round(s.alt)} m` : ''}</div>` : ''}
     ${s.kind === 'heli' && s.manual && chantier.parcel ? '<button type="button" data-a="center">Remettre au milieu de la parcelle</button>' : ''}
-    ${s.kind === 'abattage' ? '<button type="button" data-a="rotate">Changer la direction</button>' : ''}
-    ${def.mode === 'point' && !def.coordLabel ? `<button type="button" data-a="text">${s.text ? 'Modifier le texte' : 'Ajouter un texte'}</button>` : ''}
+    ${def.mode === 'wedge' || def.mode === 'orient' ? '<button type="button" data-a="rotate">Changer la direction</button>' : ''}
+    ${(def.mode === 'point' || def.mode === 'orient') && !def.coordLabel ? `<button type="button" data-a="text">${s.text ? 'Modifier le texte' : 'Ajouter un texte'}</button>` : ''}
     ${movable ? '<p class="sp-hint">Pour déplacer : glissez le symbole.</p>' : ''}
     <button type="button" data-a="del" class="danger">Supprimer</button>`;
   const pop = L.popup({ autoPan: true }).setLatLng(movable ? [s.lat, s.lng] : latlng).setContent(div).openOn(map);
@@ -244,7 +244,7 @@ function symbolPopup(s, latlng) {
     map.closePopup(pop);
     rotating = s;
     $('#sheet').hidden = true;
-    hint('Touchez la direction de chute.', () => { rotating = null; hideHint(); });
+    hint(def.mode === 'wedge' ? 'Touchez la direction de chute.' : 'Touchez la direction de la longueur.', () => { rotating = null; hideHint(); });
   });
 }
 
@@ -463,14 +463,24 @@ map.on('click', (e) => {
   if (!placing) return;
   const def = SYMBOL_BY_KIND[placing.kind];
 
-  if (def.mode === 'wedge' || def.mode === 'arrow') {
+  if (def.mode === 'wedge' || def.mode === 'arrow' || def.mode === 'orient') {
     if (!placing.first) {
       placing.first = ll;
       L.circleMarker(ll, { radius: 7, color: '#111', fillColor: def.color || '#1f9a3a', fillOpacity: 0.8 }).addTo(tempGroup);
-      $('#hint-text').textContent = def.mode === 'wedge' ? 'Touchez maintenant la direction de chute.' : 'Touchez maintenant la direction du travail.';
+      $('#hint-text').textContent = { wedge: 'Touchez maintenant la direction de chute.', arrow: 'Touchez maintenant la direction du travail.', orient: 'Touchez maintenant dans quel sens la pile est allongée.' }[def.mode];
       return;
     }
     const a = placing.first;
+    if (def.mode === 'orient') {
+      const t = prompt('Texte à côté de la pile (facultatif, ex. BS ME, Déchi) :', '');
+      chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, angle: bearing(a, ll), text: t || '' });
+      placing.first = null;
+      tempGroup.clearLayers();
+      drawSymbols();
+      save();
+      $('#hint-text').textContent = 'Pile suivante : touchez la pile, puis le sens.';
+      return;
+    }
     if (def.mode === 'wedge') chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, angle: bearing(a, ll) });
     else chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, lat2: ll.lat, lng2: ll.lng });
     placing.first = null;

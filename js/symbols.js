@@ -32,10 +32,15 @@ const POINT_SVG = {
     <path d="M2 3.5H70M2 26.5H70" stroke="${RED}" stroke-width="3" stroke-dasharray="3 3"/>
     ${[16, 36, 56].map((x) => `<circle cx="${x}" cy="15" r="7.5" fill="#fff" stroke="${RED}" stroke-width="3"/>`).join('')}
     <circle cx="16" cy="15" r="2.4" fill="#111"/><path d="M53 13h6v4h-6z" fill="#111"/>`],
-  nacelle: [24, 44, '<rect x="3" y="3" width="18" height="38" rx="1" fill="#f7c600" stroke="#111" stroke-width="2" transform="rotate(8 12 22)"/>'],
-  camion_grue: [92, 26, '<rect x="1" y="1" width="90" height="24" rx="2" fill="#1b5e86" stroke="#0d3550" stroke-width="1.5"/><text x="46" y="17.5" font-size="12.5" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#fff">Camion-grue</text>'],
-  depot: [26, 44, `<g transform="rotate(-12 13 22)"><rect x="4" y="2" width="18" height="40" fill="#6b3e1d" stroke="#111" stroke-width="1.5"/>${[7, 12, 17, 22, 27, 32, 37].map((y) => `<path d="M5 ${y}H21" stroke="#2a1608" stroke-width="1.6"/>`).join('')}</g>`],
-  secteur_tracteur: [30, 44, '<path d="M15 1.5C21 13 27 21 27 29a12 12 0 0 1-24 0C3 21 9 13 15 1.5z" fill="#111"/><path d="M8 26l14-9 1.5 4L9.5 30zM8 35l14-9 1.8 4L10 38z" fill="#2bb24c"/>'],
+  nacelle: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#f7c600" stroke="#111" stroke-width="2.5"/>
+    <g fill="#111"><rect x="9" y="26" width="18" height="3.5" rx="1"/><circle cx="12" cy="31" r="2.2"/><circle cx="24" cy="31" r="2.2"/>
+    <path d="M14 26.5L25.5 13.5" stroke="#111" stroke-width="3" stroke-linecap="round"/><rect x="23" y="8" width="9" height="6" rx="1"/></g>`],
+  camion_grue: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#1b5e86" stroke="#111" stroke-width="2.5"/>
+    <g fill="#fff"><rect x="7" y="22" width="19" height="5.5" rx="1"/><path d="M26 27.5V18h4.5l3 4.5v5z"/><circle cx="11.5" cy="29.5" r="2.4"/><circle cx="29.5" cy="29.5" r="2.4"/></g>
+    <path d="M12 22L28 9.5M28 9.5v6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>`],
+  pile: [60, 32, `<path d="M2 5L55 1.5L58 14L6 30Z" fill="#4e3418" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M3.5 5.5L56.8 7.6L6.5 28.8" stroke="#e8e8e8" stroke-width="1.6" stroke-linejoin="round" fill="none"/>`],
+  depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
 const debutIcon = (color) => `<path d="M14 26L31 9" stroke="#111" stroke-width="2.6"/><path d="M35 5l-9.5 3 6.5 6.5z" fill="#111"/><circle cx="11" cy="29" r="8" fill="${color}" stroke="#111" stroke-width="1.8"/>`;
@@ -52,11 +57,10 @@ export const SYMBOLS = [
   { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis la direction de chute.' },
   { kind: 'debut_vert', group: 'Coupe', label: 'Début du travail (vert)', mode: 'arrow', color: '#2bb24c', hint: 'Touchez le départ, puis la direction du travail.' },
   { kind: 'debut_jaune', group: 'Coupe', label: 'Début du travail (jaune)', mode: 'arrow', color: '#f7d000', hint: 'Touchez le départ, puis la direction du travail.' },
-  { kind: 'debut_violet', group: 'Coupe', label: 'Début du travail (violet)', mode: 'arrow', color: '#7b2fa0', hint: 'Touchez le départ, puis la direction du travail.' },
   { kind: 'nacelle', group: 'Coupe', label: 'Nacelle', mode: 'point', hint: 'Touchez l\'emplacement de la nacelle.' },
   { kind: 'camion_grue', group: 'Coupe', label: 'Camion-grue', mode: 'point', hint: 'Touchez l\'emplacement du camion-grue.' },
-  { kind: 'depot', group: 'Coupe', label: 'Façonnage / pile', mode: 'point', askText: '', hint: 'Touchez la zone de façonnage ou la pile.' },
-  { kind: 'secteur_tracteur', group: 'Coupe', label: 'Secteur tracteur', mode: 'point', hint: 'Touchez le secteur tracteur.' },
+  { kind: 'pile', group: 'Coupe', label: 'Pile de bois', mode: 'orient', askText: '', hint: 'Touchez la pile, puis la direction de sa longueur.' },
+  { kind: 'depot', group: 'Coupe', label: 'Pile longue (BF, déchi)', mode: 'orient', askText: '', hint: 'Touchez la pile, puis la direction de sa longueur.' },
   // --- Lignes
   { kind: 'layon', group: 'Lignes', label: 'Layon', mode: 'line', maxPts: 2, color: '#1f5f8b', weight: 6, hint: 'Touchez le début puis la fin du layon.' },
   { kind: 'cabler', group: 'Lignes', label: 'Arbres à câbler', mode: 'line', color: '#f2c200', weight: 5, outline: '#111', hint: 'Touchez les points du secteur, puis « Terminer ».' },
@@ -107,7 +111,7 @@ export function symbolSvg(kind, height = 36) {
 
 /** Taille d'affichage sur la carte (hauteur en px). */
 export function mapHeight(kind) {
-  return { trois_lattes: 44, camion_grue: 24, bache: 26, route_fermee: 22, barriere: 22, helico: 26, vehicule: 30, nacelle: 38, depot: 38, secteur_tracteur: 38 }[kind] || 30;
+  return { trois_lattes: 44, bache: 26, route_fermee: 22, barriere: 22, helico: 26, vehicule: 30, pile: 26, depot: 14 }[kind] || 30;
 }
 
 /** Tête de flèche pointant vers le haut. */

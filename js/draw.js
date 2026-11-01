@@ -96,6 +96,24 @@ function wedgeIcon(angle, scale = 1) {
   });
 }
 
+/** Symbole orienté (piles) : tourné selon s.angle, texte à côté non tourné. */
+function orientIcon(s, scale = 1) {
+  const h = Math.round(mapHeight(s.kind) * scale);
+  const [vw, vh] = symbolArt(s.kind);
+  const w = Math.round((h * vw) / vh);
+  const box = Math.max(w, h);
+  const angle = (s.angle ?? 90) - 90; // dessin horizontal = orienté vers l'est
+  const rad = (angle * Math.PI) / 180;
+  const ext = Math.abs((w / 2) * Math.cos(rad)) + Math.abs((h / 2) * Math.sin(rad)); // demi-largeur après rotation
+  const label = s.text ? `<span class="sym-label sym-label-free" style="left:${box / 2 + ext + 3}px">${esc(s.text)}</span>` : '';
+  return L.divIcon({
+    className: 'sym sym-orient',
+    html: `<div style="position:absolute;left:${(box - w) / 2}px;top:${(box - h) / 2}px;width:${w}px;height:${h}px;transform:rotate(${angle}deg)">${symbolSvg(s.kind, h)}</div>${label}`,
+    iconSize: [box, box],
+    iconAnchor: [box / 2, box / 2],
+  });
+}
+
 /**
  * Crée la couche Leaflet d'un symbole.
  * @param {object} s { kind, lat, lng, angle?, lat2?, lng2?, pts?, text? }
@@ -115,6 +133,10 @@ export function symbolLayer(s, opt = {}) {
       keyboard: false,
       zIndexOffset: def.coordLabel ? 1000 : 0,
     });
+  }
+
+  if (def.mode === 'orient') {
+    return L.marker([s.lat, s.lng], { icon: orientIcon(s, scale), draggable: !!opt.draggable, interactive: inter, keyboard: false });
   }
 
   if (def.mode === 'wedge') {
