@@ -368,3 +368,19 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 }
 .print-layout .page .f-auto textarea { min-height: 0; }
 @media (max-width: 600px) { .f-auto textarea { font-size: 15px; } }
+/* Responsable : nom + fonction en entier, téléphone à côté (impression) ou dessous (téléphone) */
+.f-resp { display: grid; grid-template-columns: 1fr 8.5em; gap: 0 10px; }
+.f-resp #resp-select { text-overflow: ellipsis; }
+@media (max-width: 600px) { .f-resp { grid-template-columns: 1fr; } }
+.print-layout .f-resp { grid-template-columns: 1fr 7.5em; }
+.print-layout #resp-select { font-size: 12.5px; padding-left: 0; }
+/* Cases pouvant contenir plusieurs noms : une ligne de base, s'agrandissent au besoin */
+.print-layout .page .ff-multi textarea[data-key="formateur"],
+.print-layout .page .ff-multi textarea[data-key="apprentis"] { min-height: 6mm; }
+.page .ff-multi textarea[data-key="formateur"], .page .ff-multi textarea[data-key="apprentis"] { min-height: 0; }
+/* Responsable à l'impression : texte libre qui passe à la ligne */
+.resp-print { display: none; }
+.print-layout .f-resp { display: none; }
+.print-layout .resp-print { display: block; }
+.resp-print-txt { font-size: 14px; padding: 3px 2px; border-bottom: 1.5px dotted #999; min-height: 22px; }
+.print-layout .page .ff-multi textarea { min-height: 11mm; }

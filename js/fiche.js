@@ -184,9 +184,11 @@ export function renderFiche(root, chantier, opt) {
           ${field('date', 'Début', { type: 'date' })}
           ${field('date_fin', 'Fin', { type: 'date' })}
         </div>
+        ${field('mesures', 'Mesures', { multi: true, ph: 'Bâches, trois lattes, sentinelles…' })}
+        ${field('autres_travaux', 'Autres travaux', { multi: true })}
       </div>
       <div class="f-col">
-        <div class="f-pair">
+        <div class="f-resp">
           <label class="ff"><span>Responsable</span>
             <select id="resp-select">
               ${RESPONSABLES.map((r, i) => `<option value="${i}" ${r.nom === info.responsable ? 'selected' : ''}>${esc(r.nom)} – ${esc(r.role)}</option>`).join('')}
@@ -197,16 +199,13 @@ export function renderFiche(root, chantier, opt) {
           </label>
           ${field('resp_tel', 'Téléphone', { type: 'tel' })}
         </div>
+        <div class="ff resp-print"><span>Responsable</span><div class="resp-print-txt" id="resp-print">${esc([info.responsable, info.resp_role, info.resp_tel].filter(Boolean).join(' – '))}</div></div>
         ${field('equipe', 'Collaborateurs (nom – téléphone)', { multi: true })}
-        <div class="f-pair">
-          ${field('formateur', 'Formateur')}
-          ${field('apprentis', 'Apprentis')}
-        </div>
+        ${field('formateur', 'Formateur', { multi: true })}
+        ${field('apprentis', 'Apprentis', { multi: true })}
         <div class="ff"><span>Dangers particuliers</span>
           <div class="f-checks">${DANGERS.map((d) => `<label><input type="checkbox" data-danger="${esc(d)}" ${coches.has(d) ? 'checked' : ''}> ${esc(d)}</label>`).join('')}</div>
         </div>
-        ${field('mesures', 'Mesures', { multi: true, ph: 'Bâches, trois lattes, sentinelles…' })}
-        ${field('autres_travaux', 'Autres travaux', { multi: true })}
       </div>
     </section>
 
@@ -216,8 +215,8 @@ export function renderFiche(root, chantier, opt) {
       <h3>Numéros d'urgence</h3>
       <div class="f-nums">${NUMEROS.map(([n, l]) => `<div><span>${l}</span><b>${n}</b></div>`).join('')}</div>
       <div class="f-contacts">
-        <div class="f-row"><span>Médecin</span><input data-key="medecin" value="${esc(info.medecin || '')}" placeholder="Nom – téléphone"></div>
-        <div class="f-row"><span>Hôpital</span><input data-key="hopital" value="${esc(info.hopital || '')}" placeholder="Nom – téléphone"></div>
+        <div class="f-row"><span>Médecin</span><div class="f-auto"><textarea data-key="medecin" rows="1" placeholder="Nom – téléphone">${esc(info.medecin || '')}</textarea></div></div>
+        <div class="f-row"><span>Hôpital</span><div class="f-auto"><textarea data-key="hopital" rows="1" placeholder="Nom – téléphone">${esc(info.hopital || '')}</textarea></div></div>
       </div>
       <h3>Sauvetage aérien <small>(milieu du lieu d'abattage)</small></h3>
       <div class="f-contacts">
@@ -276,6 +275,7 @@ export function renderFiche(root, chantier, opt) {
     a.href = `tel:${(info.resp_tel || '').replace(/\s/g, '')}`;
     root.querySelector('#call-resp-nom').textContent = info.responsable || 'Responsable';
     root.querySelector('#call-resp-role').textContent = [info.resp_role, info.resp_tel].filter(Boolean).join(' · ');
+    root.querySelector('#resp-print').textContent = [info.responsable, info.resp_role, info.resp_tel].filter(Boolean).join(' – ');
   };
   root.querySelector('#resp-select').addEventListener('change', (e) => {
     if (e.target.value === 'liste') {
