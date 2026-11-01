@@ -4,7 +4,7 @@
 import { db, newChantier, uid } from './db.js';
 import { SYMBOLS, SYMBOL_BY_KIND, GROUPS, ZONE_COLORS, symbolSvg } from './symbols.js';
 import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
-import { renderFiche, closeFicheMap } from './fiche.js';
+import { renderFiche, closeFicheMap, getResponsables, setResponsables } from './fiche.js';
 import { lookupPlace } from './place.js';
 import { wgs84ToLV95, formatLV95, parseCoordinates, polygonArea, formatArea, parcelCenter, pathLength, formatLength } from './swiss.js';
 
@@ -825,7 +825,7 @@ function download(name, text) {
 $('#btn-backup').addEventListener('click', async () => {
   await saveNow();
   const all = await db.list();
-  download(`copie-secours-chantiers_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ format: 'releve-forestier', version: 2, chantiers: all }));
+  download(`copie-secours-chantiers_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ format: 'releve-forestier', version: 2, chantiers: all, responsables: getResponsables() }));
 });
 $('#input-import').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -836,6 +836,7 @@ $('#input-import').addEventListener('change', async (e) => {
     const list = data.chantiers || (data.chantier ? [data.chantier] : null);
     if (data.format !== 'releve-forestier' || !list) throw new Error('fichier non reconnu');
     for (const c of list) await db.put(migrate(c));
+    if (Array.isArray(data.responsables) && data.responsables.length) setResponsables(data.responsables);
     toast(`${list.length} chantier(s) importé(s)`);
     renderChantierList();
   } catch (err) {

@@ -9,6 +9,32 @@ export const DEFAUT_MEDECIN = 'Dr P. Candelier – 027 458 31 81';
 const ANCIEN_MEDECIN = 'Dr Philippe Candelier, Chalais – 027 458 31 81';
 export const DEFAUT_HOPITAL = 'Hôpital de Sion – 027 603 40 00';
 
+/**
+ * Responsables (nom, fonction, téléphone) : enregistrés seulement sur cet appareil,
+ * jamais dans le code publié. Saisis une fois via « Modifier la liste… ».
+ */
+const LS_RESP = 'rf-responsables';
+export function getResponsables() {
+  try {
+    const l = JSON.parse(localStorage.getItem(LS_RESP) || '[]');
+    return Array.isArray(l) ? l : [];
+  } catch {
+    return [];
+  }
+}
+export function setResponsables(list) {
+  localStorage.setItem(LS_RESP, JSON.stringify(list));
+}
+/** « Nom, Fonction, 079 123 45 67 » (une personne par ligne) -> liste */
+function parseResponsables(text) {
+  return text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+    const parts = l.split(/[,;]|\s[–-]\s/).map((x) => x.trim()).filter(Boolean);
+    const telIdx = parts.findIndex((x) => /\d{2}/.test(x));
+    const tel = telIdx >= 0 ? parts.splice(telIdx, 1)[0] : '';
+    return { nom: parts[0] || '', role: parts.slice(1).join(', '), tel };
+  }).filter((r) => r.nom);
+}
+
 const NUMEROS = [
   ['144', 'Ambulance'],
   ['1414', 'Rega'],
@@ -38,6 +64,10 @@ export function renderFiche(root, chantier, opt) {
   // Valeurs habituelles du triage (modifiables sur la fiche ; une case vidée reste vide)
   if (info.medecin === undefined || info.medecin === ANCIEN_MEDECIN) info.medecin = DEFAUT_MEDECIN;
   if (info.hopital === undefined) info.hopital = DEFAUT_HOPITAL;
+  const RESPONSABLES = getResponsables();
+  if (info.responsable === undefined && info.resp_tel === undefined && RESPONSABLES[0]) {
+    Object.assign(info, { responsable: RESPONSABLES[0].nom, resp_role: RESPONSABLES[0].role, resp_tel: RESPONSABLES[0].tel });
+  }
   const sym = (kind) => chantier.symbols.filter((s) => s.kind === kind);
   const heli = sym('heli')[0];
 
@@ -80,6 +110,9 @@ export function renderFiche(root, chantier, opt) {
 
   <div class="fiche-calls no-print">
     <a href="tel:144" class="call c144"><b>144</b> Ambulance</a>
+    <a href="tel:${esc((info.resp_tel || '').replace(/\s/g, ''))}" class="call c-resp" id="call-resp" ${info.resp_tel ? '' : 'hidden'}>
+      <b id="call-resp-nom">${esc(info.responsable || '')}</b><span id="call-resp-role">${esc([info.resp_role, info.resp_tel].filter(Boolean).join(' · '))}</span>
+    </a>
   </div>
 
   <article class="page">
@@ -104,7 +137,14 @@ export function renderFiche(root, chantier, opt) {
       </div>
       <div class="f-col">
         <div class="f-pair">
-          ${field('responsable', 'Contremaître')}
+          <label class="ff"><span>Responsable</span>
+            <select id="resp-select">
+              ${RESPONSABLES.map((r, i) => `<option value="${i}" ${r.nom === info.responsable ? 'selected' : ''}>${esc(r.nom)} – ${esc(r.role)}</option>`).join('')}
+              <option value="autre" ${RESPONSABLES.some((r) => r.nom === info.responsable) ? '' : 'selected'}>Autre…</option>
+              <option value="liste">✎ Modifier la liste…</option>
+            </select>
+            <input data-key="responsable" id="resp-nom" value="${esc(info.responsable || '')}" placeholder="Nom" ${RESPONSABLES.some((r) => r.nom === info.responsable) ? 'hidden' : ''}>
+          </label>
           ${field('resp_tel', 'Téléphone', { type: 'tel' })}
         </div>
         ${field('equipe', 'Collaborateurs (nom – téléphone)', { multi: true })}
@@ -179,6 +219,55 @@ export function renderFiche(root, chantier, opt) {
       </div>
     </section>
   </article>`;
+
+  const updateCall = () => {
+    const a = root.querySelector('#call-resp');
+    a.hidden = !info.resp_tel;
+    a.href = `tel:${(info.resp_tel || '').replace(/\s/g, '')}`;
+    root.querySelector('#call-resp-nom').textContent = info.responsable || 'Responsable';
+    root.querySelector('#call-resp-role').textContent = [info.resp_role, info.resp_tel].filter(Boolean).join(' · ');
+  };
+  root.querySelector('#resp-select').addEventListener('change', (e) => {
+    if (e.target.value === 'liste') {
+      const actuel = RESPONSABLES.map((r) => [r.nom, r.role, r.tel].filter(Boolean).join(', ')).join('\n');
+      const dlg = document.createElement('dialog');
+      dlg.className = 'dialog';
+      dlg.innerHTML = `<form method="dialog"><header><h2>Responsables</h2></header>
+        <div class="dialog-body"><p class="hint">Une personne par ligne : <b>Nom, Fonction, Téléphone</b>.<br>Cette liste reste sur ce téléphone (elle n'est pas publiée).</p>
+        <textarea rows="6" style="width:100%;font-size:15px;padding:8px" placeholder="Prénom Nom, Contremaître, 079 000 00 00">${esc(actuel)}</textarea></div>
+        <footer><div class="row"><span class="spacer"></span><button value="cancel">Annuler</button><button value="ok" class="primary">Enregistrer</button></div></footer></form>`;
+      document.body.appendChild(dlg);
+      dlg.addEventListener('close', () => {
+        if (dlg.returnValue === 'ok') {
+          const list = parseResponsables(dlg.querySelector('textarea').value);
+          setResponsables(list);
+          if (list[0] && !list.some((r) => r.nom === info.responsable)) Object.assign(info, { responsable: list[0].nom, resp_role: list[0].role, resp_tel: list[0].tel });
+          opt.onChange();
+        }
+        dlg.remove();
+        renderFiche(root, chantier, opt);
+      });
+      dlg.showModal();
+      return;
+    }
+    const r = RESPONSABLES[e.target.value];
+    const nom = root.querySelector('#resp-nom');
+    const tel = root.querySelector('[data-key="resp_tel"]');
+    if (r) {
+      Object.assign(info, { responsable: r.nom, resp_role: r.role, resp_tel: r.tel });
+      nom.hidden = true;
+    } else {
+      Object.assign(info, { responsable: '', resp_role: '', resp_tel: '' });
+      nom.hidden = false;
+      nom.focus();
+    }
+    nom.value = info.responsable;
+    tel.value = info.resp_tel;
+    updateCall();
+    opt.onChange();
+  });
+  root.querySelector('#resp-nom').addEventListener('input', updateCall);
+  root.querySelector('[data-key="resp_tel"]').addEventListener('input', updateCall);
 
   root.querySelectorAll('[data-refresh]').forEach((b) => b.addEventListener('click', () => {
     const input = root.querySelector(`[data-key="${b.dataset.refresh}"]`);

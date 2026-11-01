@@ -336,3 +336,11 @@ progress { width: 100%; margin-top: 8px; accent-color: var(--green-2); }
 .f-auto { display: flex; gap: 4px; align-items: stretch; min-width: 0; }
 .f-auto input { flex: 1; min-width: 0; }
 .f-refresh { min-height: 0; padding: 0 8px; font-size: 16px; border: 1.5px solid #333; border-radius: 4px; background: #fff; }
+.fiche-calls { grid-template-columns: 1fr 1.6fr; }
+.fiche-calls:has(#call-resp[hidden]) { grid-template-columns: 1fr; }
+.c-resp { background: var(--green); }
+.c-resp b { font-size: 18px; line-height: 1.2; padding-top: 4px; }
+.c-resp span { font-size: 13px; opacity: .95; }
+#resp-select { width: 100%; min-height: 0; padding: 3px 2px; border: 0; border-bottom: 1.5px dotted #999; background: transparent; font-size: 14px; }
+#resp-nom { margin-top: 3px; }
+.print-layout #resp-select { appearance: none; -webkit-appearance: none; }
