@@ -52,3 +52,8 @@ et le mode hors-ligne), par ex. GitHub Pages : *Settings → Pages → Deploy fr
 - Coordonnées LV95 calculées avec les formules approchées de swisstopo (~1 m), suffisant pour le terrain ;
   la précision réelle dépend du GPS du téléphone (souvent 3–10 m en forêt).
 - Données cartographiques © swisstopo / geo.admin.ch (données ouvertes, mention de la source obligatoire).
+
+## Autres applications
+
+- [`construction/`](construction/) : chantiers de construction.
+- [`bois-de-feu/`](bois-de-feu/) : stock de bois de feu (photos), entrées de bois, commandes et livraisons.
