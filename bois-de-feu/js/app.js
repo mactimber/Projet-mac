@@ -522,6 +522,7 @@ function historyList(mvts) {
 }
 
 function lotDialog(lot, defaults = {}) {
+  if (!S.settings.lieux.length) { toast('Créez d’abord une zone dans l’onglet Zones', 4000); go('place'); return; }
   const isNew = !lot;
   const s = S.settings;
   const p0 = s.produits[0] || {};
@@ -649,6 +650,9 @@ function lotsCompatibles(p, lieu, includeEmpty = false) {
 }
 
 function entreeDialog(type, mvt) {
+  if (!mvt) {
+    if (!S.settings.lieux.length) { toast('Créez d’abord une zone dans l’onglet Zones', 4000); go('place'); return; }
+  }
   const isNew = !mvt;
   const s = S.settings;
   const m = mvt ? { ...mvt } : {
@@ -1401,7 +1405,6 @@ function zoneDialog(zone) {
   });
   on('#z-del', async () => {
     if (zoneLots(z.id).length) { toast('Cette zone contient encore du bois : videz ou déplacez les lots d’abord.', 4000); return; }
-    if (zones.length <= 1) { toast('Il faut au moins une zone'); return; }
     if (!confirm(`Supprimer la zone « ${z.nom} » ?`)) return;
     zones.splice(zones.indexOf(z), 1);
     for (const l of S.lots.filter((x) => x.lieu === z.id)) await delLot(l);
@@ -1473,6 +1476,15 @@ function renderPlus() {
   </section>
 
   <section class="card">
+    <h2>Recommencer</h2>
+    <p class="hint">Le catalogue (produits, contenants, entreprises) est conservé. Faites une copie de secours avant, si vous voulez pouvoir revenir en arrière.</p>
+    <div class="row">
+      <button type="button" class="danger" id="btn-reset-zones">🗑 Effacer toutes les zones</button>
+      <button type="button" class="danger" id="btn-reset-all">🗑 Tout effacer (zones, stock, historique)</button>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Copie de secours</h2>
     <p class="hint">Les données et les photos sont enregistrées <b>uniquement sur cet appareil</b>. Créez régulièrement une copie (Drive, e-mail, clé USB…) pour ne rien perdre et pour passer sur un autre appareil.</p>
     <div class="row">
@@ -1492,6 +1504,8 @@ function bindPlus(root) {
   $('#csv-mvts', root).onclick = () => exportCSV('mouvements');
   $('#csv-cmds', root).onclick = () => exportCSV('commandes');
   $('#btn-backup', root).onclick = backup;
+  $('#btn-reset-zones', root).onclick = () => resetData(false);
+  $('#btn-reset-all', root).onclick = () => resetData(true);
   $('#input-import', root).onchange = (e) => restore(e.target.files[0]);
 
   const prods = [...S.settings.produits];
@@ -1564,6 +1578,30 @@ function exportCSV(kind) {
   }
   const csv = `﻿${rows.map((r) => r.map(cell).join(';')).join('\r\n')}`;
   download(`bois-de-feu_${kind}_${today()}.csv`, csv, 'text/csv;charset=utf-8');
+}
+
+async function resetData(tout) {
+  const nbZ = S.settings.lieux.length;
+  const nbL = S.lots.length;
+  const msg = tout
+    ? `Tout effacer ?\n${nbZ} zone(s), ${nbL} lot(s), tout l’historique et les photos seront supprimés.`
+    : `Effacer les ${nbZ} zone(s) ?${nbL ? `\nLes ${nbL} lot(s) de bois qu’elles contiennent seront aussi supprimés (l’historique est conservé).` : ''}`;
+  if (!confirm(msg)) return;
+  if (!confirm('Confirmez : cette action ne peut pas être annulée.')) return;
+  for (const l of [...S.lots]) await delLot(l);
+  if (tout) {
+    await db.clear('mouvements');
+    S.mvts = [];
+    if (S.settings.livraisons) { await db.clear('commandes'); S.cmds = []; }
+  }
+  S.settings.lieux = [];
+  S.settings.seuils = tout ? {} : S.settings.seuils;
+  S.mapView = null;
+  S.fLieu = '';
+  await saveSettings();
+  await cleanPhotos(usedPhotos());
+  toast(tout ? 'Tout est effacé' : 'Zones effacées', 3000);
+  go('place');
 }
 
 async function backup() {
