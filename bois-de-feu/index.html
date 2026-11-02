@@ -12,6 +12,8 @@
   <meta name="apple-mobile-web-app-title" content="Bois de feu">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="vendor/geoman/leaflet-geoman.css">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -25,9 +27,9 @@
 
     <nav class="tabs" aria-label="Menu">
       <button data-view="stock"><span>🪵</span>Stock</button>
-      <button data-view="place"><span>📍</span>Place</button>
+      <button data-view="place"><span>🗺</span>Zones</button>
       <button data-view="entrees"><span>🪓</span>Entrées</button>
-      <button data-view="livraisons"><span>🚚</span>Livraisons<i hidden></i></button>
+      <button data-view="livraisons" hidden><span>🚚</span>Livraisons<i hidden></i></button>
       <button data-view="plus"><span>☰</span>Plus</button>
     </nav>
   </div>
@@ -38,6 +40,8 @@
   <div id="print"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/geoman/leaflet-geoman.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

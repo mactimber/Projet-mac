@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION,
   ...DEFAULT_CATALOGUE(),
   lieux: [{ id: 'zA', nom: 'Zone A' }],
-  plan: null,
+  livraisons: false, // module commandes / livraisons (désactivé pour l'instant)
   entreprises: [],
   seuils: {},
   triage: { nom: 'Triage forestier du Vallon', adresse: 'Réchy', tel: '', email: '' },
@@ -71,7 +71,10 @@ const S = {
   fEtat: '',
   showEmpty: false,
   fType: '',
-  placing: null, // id de la zone à placer sur le plan
+  drawing: null, // zone en cours de dessin sur la carte
+  editing: null, // zone dont on corrige le contour
+  base: 'photo',
+  mapView: null,
 };
 
 // ---------------------------------------------------------------- Outils
@@ -197,7 +200,6 @@ function usedPhotos() {
   const used = new Set();
   for (const o of [...S.lots, ...S.mvts, ...S.cmds]) for (const id of o.photos || []) used.add(id);
   for (const c of S.cmds) for (const id of c.livraison?.photos || []) used.add(id);
-  if (S.settings?.plan) used.add(S.settings.plan);
   return used;
 }
 
@@ -362,7 +364,7 @@ function resume(lieu = '') {
     if (l.etat === 'sec') r.sec += l.quantite; else r.autre += l.quantite;
   }
   if (!lieu) {
-    for (const c of S.cmds) {
+    for (const c of S.settings.livraisons ? S.cmds : []) {
       if (c.statut !== 'a_planifier' && c.statut !== 'planifiee') continue;
       for (const li of c.lignes) get(li).aLivrer += num(li.quantite);
     }
@@ -393,6 +395,7 @@ function renderStock() {
     parLieu.get(l.lieu).push(l);
   }
   const nbAlertes = rows.filter(alerte).length;
+  const noCmd = S.fLieu || !S.settings.livraisons;
   let totSt = 0;
   let secSt = 0;
   for (const r of rows) { totSt += steres(r.total, r.p.contenant); secSt += steres(r.sec, r.p.contenant); }
@@ -406,17 +409,17 @@ function renderStock() {
   <section class="card">
     <h2>Stock total ${S.fLieu ? `<small>· ${esc(lieuNom(S.fLieu))}</small>` : ''}</h2>
     ${totSt ? `<p class="totst">≈ <b>${fmtQ(totSt)} stères</b>${secSt !== totSt ? ` <span class="muted">dont ${fmtQ(secSt)} st secs</span>` : ''}</p>` : ''}
-    ${nbAlertes ? `<p class="alert">⚠ ${nbAlertes} produit${nbAlertes > 1 ? 's' : ''} en stock bas ou insuffisant pour les commandes</p>` : ''}
+    ${nbAlertes ? `<p class="alert">⚠ ${nbAlertes} produit${nbAlertes > 1 ? 's' : ''} en stock bas</p>` : ''}
     ${rows.length ? `<table class="sum">
-      <thead><tr><th>Produit</th><th>Stock</th>${S.fLieu ? '' : '<th>À livrer</th><th>Reste</th>'}</tr></thead>
+      <thead><tr><th>Produit</th><th>Stock</th>${noCmd ? '' : '<th>À livrer</th><th>Reste</th>'}</tr></thead>
       <tbody>${rows.map((r) => {
         const a = alerte(r);
         const cour = lotCourant(r.k);
         return `<tr data-seuil="${esc(r.k)}" class="${a}">
           <td><b>${esc(r.p.essence)} ${esc(r.p.longueur)}</b> <span class="muted">${esc(r.p.contenant)}</span>
             <div class="tiny">${cour ? `<span class="take">👉 ${esc(lieuNom(cour.lieu))}</span> ` : (r.total ? '<span class="alert-txt">pas de zone à prendre</span> ' : '')}${r.autre ? `<span class="muted">séchage / vert ${fmtQ(r.autre)}</span>` : ''}${S.settings.seuils[r.k] !== undefined ? ` <span class="muted">· alerte sous ${fmtQ(S.settings.seuils[r.k])}</span>` : ''}</div></td>
-          <td class="n">${qty(r.total, r.p.contenant)}${stPar(r.p.contenant) && stPar(r.p.contenant) !== 1 && r.total ? `<div class="tiny muted">≈ ${fmtQ(steres(r.total, r.p.contenant))} st</div>` : ''}</td>
-          ${S.fLieu ? '' : `<td class="n">${r.aLivrer ? fmtQ(r.aLivrer) : '–'}</td><td class="n"><b>${fmtQ(r.total - r.aLivrer)}</b>${a ? ' ⚠' : ''}</td>`}
+          <td class="n">${qty(r.total, r.p.contenant)}${noCmd && a ? ' ⚠' : ''}${stPar(r.p.contenant) && stPar(r.p.contenant) !== 1 && r.total ? `<div class="tiny muted">≈ ${fmtQ(steres(r.total, r.p.contenant))} st</div>` : ''}</td>
+          ${noCmd ? '' : `<td class="n">${r.aLivrer ? fmtQ(r.aLivrer) : '–'}</td><td class="n"><b>${fmtQ(r.total - r.aLivrer)}</b>${a ? ' ⚠' : ''}</td>`}
         </tr>`;
       }).join('')}</tbody></table>
       <p class="hint">👉 = zone où l’on prend ce bois. Touchez une ligne pour régler un seuil d’alerte.</p>` : '<p class="hint">Aucun bois en stock pour le moment. Ajoutez un lot ci-dessous ou enregistrez une entrée de bois.</p>'}
@@ -1109,7 +1112,7 @@ async function printBon(c) {
   window.print();
 }
 
-// ---------------------------------------------------------------- Vue : Place (plan et zones)
+// ---------------------------------------------------------------- Vue : Place (carte swisstopo et zones)
 
 function zoneLots(id) { return S.lots.filter((l) => l.lieu === id && l.quantite > 0); }
 
@@ -1125,35 +1128,76 @@ const shortProd = (l) => `${l.essence} ${l.longueur.replace(/\s?cm/, '')} ${({ '
 
 function zoneResume(id) {
   const m = new Map();
-  for (const l of zoneLots(id)) m.set(shortProd(l), (m.get(shortProd(l)) || 0) + l.quantite);
+  for (const l of zoneLots(id)) {
+    const k = `${l.role === 'prendre' ? '👉 ' : ''}${shortProd(l)}`;
+    m.set(k, (m.get(k) || 0) + l.quantite);
+  }
   return [...m].map(([k, q]) => `${k} : ${fmtQ(q)}`);
 }
 
+const ZONE_COLORS = { prendre: '#2e7d32', reserve: '#3b5b8c', sechage: '#d98300', vide: '#8a8a8a' };
+const RECHY = [46.2626, 7.4960];
+const wmts = (id) => `https://wmts.geo.admin.ch/1.0.0/${id}/default/current/3857/{z}/{x}/{y}.jpeg`;
+const ATTR = '© <a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo</a>';
+const TILE_CACHE = 'bf-tiles-v1';
+
+let map = null;
+let zoneLayers = {};
+
+function destroyMap() {
+  if (!map) return;
+  S.mapView = { c: map.getCenter(), z: map.getZoom() };
+  map.remove();
+  map = null;
+  zoneLayers = {};
+}
+
+// Surface approximative d'un polygone (m²).
+function surface(ring) {
+  if (!ring || ring.length < 3) return 0;
+  const R = 6378137;
+  const lat0 = (ring.reduce((s, p) => s + p[0], 0) / ring.length) * Math.PI / 180;
+  const pts = ring.map(([la, lo]) => [lo * Math.PI / 180 * R * Math.cos(lat0), la * Math.PI / 180 * R]);
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a / 2);
+}
+
 function renderPlace() {
-  const s = S.settings;
-  const zones = s.lieux;
-  const placing = S.placing && zones.find((z) => z.id === S.placing);
+  const zones = S.settings.lieux;
+  const drawing = S.drawing && zones.find((z) => z.id === S.drawing);
+  const editing = S.editing && zones.find((z) => z.id === S.editing);
+  const sansContour = zones.filter((z) => !z.ring);
   return `
-  <section class="card">
-    <div class="row between"><h2>Plan de la place</h2>
-      <label class="btn small">📷 ${s.plan ? 'Changer le plan' : 'Ajouter un plan'}<input type="file" accept="image/*" id="plan-file" hidden></label></div>
-    ${s.plan ? `
-      ${placing ? `<p class="placing-bar">Touchez le plan à l’endroit de « <b>${esc(placing.nom)}</b> » <button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
-      <div class="plan ${placing ? 'placing' : ''}" id="plan"><img data-photo="${esc(s.plan)}" alt="Plan de la place">
-        ${zones.filter((z) => z.x != null).map((z) => `<button type="button" class="zmark ${zoneStatus(z.id)}" data-zone="${esc(z.id)}" style="left:${z.x}%;top:${z.y}%"><b>${esc(z.nom)}</b>${zoneResume(z.id).slice(0, 3).map((t) => `<small>${esc(t)}</small>`).join('')}</button>`).join('')}
-      </div>
-      <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>`
-    : `<p class="hint">Ajoutez une image de la place du triage : photo prise d’en haut, capture de la photo aérienne sur map.geo.admin.ch, ou photo d’un croquis dessiné à la main. Vous placerez ensuite les zones dessus.</p>`}
+  <section class="card map-card">
+    <div class="row between"><h2>Secteur du bois de feu</h2>
+      <span class="row"><button type="button" class="small" id="btn-gps">◎ Ma position</button><button type="button" class="small" id="btn-fit">⤢ Tout voir</button></span></div>
+    ${drawing ? `<p class="placing-bar"><span>Dessin de « <b>${esc(drawing.nom)}</b> » : touchez chaque coin, puis le premier point pour fermer.</span><button type="button" class="small" id="cancel-draw">Annuler</button></p>` : ''}
+    ${editing ? `<p class="placing-bar"><span>Glissez les points de « <b>${esc(editing.nom)}</b> » pour corriger le contour.</span><button type="button" class="small primary" id="end-edit">Terminer</button></p>` : ''}
+    <div id="zmap" class="zmap ${drawing ? 'placing' : ''}"></div>
+    <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>
+    ${sansContour.length && !drawing ? `<p class="hint">Pas encore dessinée${sansContour.length > 1 ? 's' : ''} : ${sansContour.map((z) => `<button type="button" class="link" data-draw="${esc(z.id)}">${esc(z.nom)}</button>`).join(', ')}</p>` : ''}
+    <details class="backup"><summary>Carte sans réseau</summary>
+      <p class="hint">Centrez la carte sur le secteur, puis enregistrez-la : elle restera disponible sans réseau.</p>
+      <button type="button" id="btn-offline">⬇ Enregistrer cette partie de la carte</button>
+      <progress id="offline-progress" hidden></progress><p class="hint" id="offline-status"></p>
+    </details>
   </section>
 
   <button class="primary big" id="btn-new-zone">+ Nouvelle zone</button>
 
   ${zones.map((z) => {
     const ls = S.lots.filter((l) => l.lieu === z.id && (l.quantite > 0 || S.showEmpty)).sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr'));
+    const m2 = surface(z.ring);
     return `<section class="card zone-card" id="zone-${esc(z.id)}">
       <div class="row between"><h2><i class="dot ${zoneStatus(z.id)}"></i> ${esc(z.nom)}</h2>
-        <button type="button" class="small" data-zone-edit="${esc(z.id)}">Modifier</button></div>
-      ${z.note ? `<p class="hint">${esc(z.note)}</p>` : ''}
+        <span class="row">${z.ring ? `<button type="button" class="small" data-show="${esc(z.id)}">🗺 Voir</button>` : `<button type="button" class="small" data-draw="${esc(z.id)}">✏ Dessiner</button>`}
+        <button type="button" class="small" data-zone-edit="${esc(z.id)}">Modifier</button></span></div>
+      ${z.note || m2 ? `<p class="hint">${esc(z.note || '')}${z.note && m2 ? ' · ' : ''}${m2 ? `≈ ${Math.round(m2)} m²` : ''}</p>` : ''}
       <div class="lots">${ls.map(lotCard).join('') || '<p class="hint">Zone vide.</p>'}</div>
       <button type="button" class="small mt" data-zone-add="${esc(z.id)}">+ Lot dans cette zone</button>
     </section>`;
@@ -1161,68 +1205,179 @@ function renderPlace() {
 }
 
 function bindPlace(root) {
-  $('#plan-file', root).onchange = async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    toast('Enregistrement du plan…');
-    S.settings.plan = await storePhoto(f);
-    await saveSettings();
-    cleanPhotos(usedPhotos());
-    render();
-  };
-  const cancel = $('#cancel-place', root);
-  if (cancel) cancel.onclick = () => { S.placing = null; render(); };
-  const plan = $('#plan', root);
-  if (plan) {
-    plan.addEventListener('click', async (e) => {
-      if (S.placing) {
-        const r = $('img', plan).getBoundingClientRect();
-        const z = S.settings.lieux.find((x) => x.id === S.placing);
-        z.x = Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)) * 10) / 10;
-        z.y = Math.round(Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)) * 10) / 10;
-        S.placing = null;
-        await saveSettings();
-        render();
-        return;
-      }
-      const m = e.target.closest('[data-zone]');
-      if (m) {
-        const card = $(`#zone-${CSS.escape(m.dataset.zone)}`, root);
-        card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        card?.classList.add('flash');
-        setTimeout(() => card?.classList.remove('flash'), 1200);
-      }
+  const zones = S.settings.lieux;
+  map = L.map($('#zmap', root), { maxZoom: 21, minZoom: 8, zoomControl: true });
+  map.attributionControl.setPrefix(false);
+  L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+  const photo = L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 21, attribution: ATTR, crossOrigin: 'anonymous' });
+  const carte = L.tileLayer(wmts('ch.swisstopo.pixelkarte-farbe'), { maxNativeZoom: 18, maxZoom: 21, attribution: ATTR, crossOrigin: 'anonymous' });
+  (S.base === 'carte' ? carte : photo).addTo(map);
+  L.control.layers({ 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
+  map.on('baselayerchange', (e) => { S.base = e.layer === carte ? 'carte' : 'photo'; });
+  map.pm.setLang('fr');
+
+  const group = L.featureGroup().addTo(map);
+  for (const z of zones) {
+    if (!z.ring) continue;
+    const st = zoneStatus(z.id);
+    const poly = L.polygon(z.ring, { color: '#fff', weight: 2, fillColor: ZONE_COLORS[st], fillOpacity: 0.55 }).addTo(group);
+    poly.bindTooltip(`<b>${esc(z.nom)}</b>${zoneResume(z.id).slice(0, 4).map((t) => `<br>${esc(t)}`).join('')}`, { permanent: true, direction: 'center', className: `zlabel ${st}` });
+    poly.on('click', () => {
+      if (S.drawing || S.editing) return;
+      const card = $(`#zone-${CSS.escape(z.id)}`, root);
+      card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      card?.classList.add('flash');
+      setTimeout(() => card?.classList.remove('flash'), 1200);
     });
+    zoneLayers[z.id] = poly;
   }
+  const fitAll = () => {
+    if (group.getLayers().length) map.fitBounds(group.getBounds().pad(0.25), { maxZoom: 19 });
+    else map.setView(RECHY, 16);
+  };
+  if (S.mapView) map.setView(S.mapView.c, S.mapView.z); else fitAll();
+  setTimeout(() => map && map.invalidateSize(), 50);
+
+  $('#btn-fit', root).onclick = fitAll;
+  $('#btn-gps', root).onclick = () => {
+    toast('Recherche de la position…');
+    map.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+  };
+  map.on('locationfound', (e) => { L.circleMarker(e.latlng, { radius: 7, color: '#fff', weight: 2, fillColor: '#1976d2', fillOpacity: 1 }).addTo(map); });
+  map.on('locationerror', () => toast('Position introuvable (GPS désactivé ?)'));
+
+  // Dessin d'une zone
+  if (S.drawing) {
+    map.pm.enableDraw('Polygon', {
+      pathOptions: { color: '#ffeb3b', weight: 3, fillOpacity: 0.3 },
+      templineStyle: { color: '#ffeb3b', weight: 3 },
+      hintlineStyle: { color: '#ffeb3b', dashArray: '5 5' },
+      allowSelfIntersection: false,
+      snappable: false,
+    });
+    map.on('pm:create', async (e) => {
+      const z = zones.find((x) => x.id === S.drawing);
+      const ring = e.layer.getLatLngs()[0].map((ll) => [+ll.lat.toFixed(7), +ll.lng.toFixed(7)]);
+      map.removeLayer(e.layer);
+      S.drawing = null;
+      if (z) { z.ring = ring; await saveSettings(); toast(`« ${z.nom} » dessinée`); }
+      render();
+    });
+    $('#cancel-draw', root).onclick = () => { map.pm.disableDraw(); S.drawing = null; render(); };
+  }
+  // Correction d'un contour
+  if (S.editing && zoneLayers[S.editing]) {
+    const poly = zoneLayers[S.editing];
+    poly.closeTooltip();
+    poly.pm.enable({ allowSelfIntersection: false, snappable: false });
+    $('#end-edit', root).onclick = async () => {
+      const z = zones.find((x) => x.id === S.editing);
+      z.ring = poly.getLatLngs()[0].map((ll) => [+ll.lat.toFixed(7), +ll.lng.toFixed(7)]);
+      poly.pm.disable();
+      S.editing = null;
+      await saveSettings();
+      toast('Contour enregistré');
+      render();
+    };
+  }
+
+  $$('[data-draw]', root).forEach((b) => b.addEventListener('click', () => startDraw(b.dataset.draw)));
+  $$('[data-show]', root).forEach((b) => b.addEventListener('click', () => {
+    const poly = zoneLayers[b.dataset.show];
+    if (!poly) return;
+    map.fitBounds(poly.getBounds().pad(0.6), { maxZoom: 20 });
+    $('#zmap').scrollIntoView({ behavior: 'smooth' });
+  }));
+  $('#btn-offline', root).onclick = saveOfflineTiles;
   $('#btn-new-zone', root).onclick = () => zoneDialog();
-  $$('[data-zone-edit]', root).forEach((b) => b.addEventListener('click', () => zoneDialog(S.settings.lieux.find((z) => z.id === b.dataset.zoneEdit))));
+  $$('[data-zone-edit]', root).forEach((b) => b.addEventListener('click', () => zoneDialog(zones.find((z) => z.id === b.dataset.zoneEdit))));
   $$('[data-zone-add]', root).forEach((b) => b.addEventListener('click', () => lotDialog(null, { lieu: b.dataset.zoneAdd })));
   bindLots(root);
+}
+
+function startDraw(id) {
+  S.drawing = id;
+  S.editing = null;
+  render();
+  $('#zmap')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function saveOfflineTiles() {
+  if (!('caches' in window) || !map) { toast('Non pris en charge par ce navigateur'); return; }
+  if (map.getZoom() < 14) { toast('Zoomez d’abord sur le secteur'); return; }
+  const urls = new Set();
+  const b = map.getBounds();
+  map.eachLayer((layer) => {
+    if (!(layer instanceof L.TileLayer)) return;
+    const ts = layer.options.tileSize;
+    const maxN = layer.options.maxNativeZoom ?? 20;
+    for (let z = map.getZoom(); z <= Math.min(map.getZoom() + 3, 20); z++) {
+      const tz = Math.min(z, maxN);
+      const nw = map.project(b.getNorthWest(), tz).divideBy(ts).floor();
+      const se = map.project(b.getSouthEast(), tz).divideBy(ts).floor();
+      for (let x = nw.x; x <= se.x; x++) {
+        for (let y = nw.y; y <= se.y; y++) {
+          const c = L.point(x, y);
+          c.z = tz;
+          const saved = layer._tileZoom;
+          layer._tileZoom = tz;
+          urls.add(layer.getTileUrl(c));
+          layer._tileZoom = saved;
+        }
+      }
+    }
+  });
+  const list = [...urls];
+  if (list.length > 4000) { toast('Zone trop grande : zoomez davantage'); return; }
+  const cache = await caches.open(TILE_CACHE);
+  const prog = $('#offline-progress');
+  prog.hidden = false;
+  prog.max = list.length;
+  prog.value = 0;
+  let i = 0;
+  let ok = 0;
+  const worker = async () => {
+    while (i < list.length) {
+      const u = list[i++];
+      try {
+        if (!(await cache.match(u))) {
+          const r = await fetch(u, { mode: 'cors' });
+          if (r.ok) await cache.put(u, r);
+        }
+        ok++;
+      } catch { /* hors-ligne */ }
+      prog.value++;
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  prog.hidden = true;
+  $('#offline-status').textContent = `✔ Carte enregistrée (${ok} images).`;
 }
 
 function zoneDialog(zone) {
   const isNew = !zone;
   const zones = S.settings.lieux;
-  const z = zone || { id: uid(), nom: `Zone ${String.fromCharCode(65 + zones.length % 26)}` };
+  const z = zone || { id: uid(), nom: `Zone ${String.fromCharCode(65 + (zones.length % 26))}` };
   const i = zones.indexOf(zone);
   const form = openDlg(isNew ? 'Nouvelle zone' : `Zone ${z.nom}`, `
-    <label>Nom de la zone<input name="nom" required value="${esc(z.nom)}" placeholder="ex. Zone A, Couvert nord…"></label>
-    <label>Remarque<input name="note" value="${esc(z.note || '')}" placeholder="ex. le long du hangar, accès camion"></label>
-    ${isNew ? '' : `<div class="row">
-      ${S.settings.plan ? '<button type="button" id="z-place">📍 Placer sur le plan</button>' : ''}
+    <label>Nom de la zone<input name="nom" required value="${esc(z.nom)}" placeholder="ex. Zone A, Place du hangar…"></label>
+    <label>Remarque<input name="note" value="${esc(z.note || '')}" placeholder="ex. derrière le hangar, accès camion"></label>
+    ${isNew ? '<p class="hint">Après l’enregistrement, vous dessinerez le contour de la zone sur la carte.</p>' : `<div class="row">
+      <button type="button" id="z-draw">✏ ${z.ring ? 'Redessiner' : 'Dessiner sur la carte'}</button>
+      ${z.ring ? '<button type="button" id="z-edit">Corriger le contour</button>' : ''}</div>
+      <div class="row mt">
       <button type="button" id="z-up" ${i <= 0 ? 'disabled' : ''}>▲ Monter</button>
       <button type="button" id="z-down" ${i >= zones.length - 1 ? 'disabled' : ''}>▼ Descendre</button></div>
       <p class="hint">L’ordre des zones sert aussi à choisir la prochaine réserve à ouvrir (à âge égal).</p>`}
   `, `${isNew ? '' : '<button type="button" class="danger" id="z-del">Supprimer</button>'}<span class="spacer"></span>
-      <button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>`);
+      <button type="button" data-close>Annuler</button><button class="primary">${isNew ? 'Enregistrer et dessiner' : 'Enregistrer'}</button>`);
   onSubmit(form, async (f) => {
     z.nom = f.nom.trim();
     z.note = f.note.trim();
     if (isNew) zones.push(z);
     await saveSettings();
     dlg().close();
-    if (isNew && S.settings.plan) { S.placing = z.id; toast('Touchez maintenant le plan pour placer la zone'); }
-    render();
+    if (isNew) startDraw(z.id); else render();
   });
   if (isNew) return;
   const move = async (d) => {
@@ -1235,18 +1390,21 @@ function zoneDialog(zone) {
   const on = (id, fn) => { const b = $(id, form); if (b) b.onclick = fn; };
   on('#z-up', () => move(-1));
   on('#z-down', () => move(1));
-  on('#z-place', () => {
-    S.placing = z.id;
+  on('#z-draw', () => { dlg().close(); startDraw(z.id); });
+  on('#z-edit', () => {
     dlg().close();
+    S.editing = z.id;
+    S.drawing = null;
+    if (zoneLayers[z.id] && map) S.mapView = { c: zoneLayers[z.id].getBounds().getCenter(), z: Math.max(map.getZoom(), 18) };
     render();
-    $('#plan')?.scrollIntoView({ behavior: 'smooth' });
+    $('#zmap')?.scrollIntoView({ behavior: 'smooth' });
   });
   on('#z-del', async () => {
     if (zoneLots(z.id).length) { toast('Cette zone contient encore du bois : videz ou déplacez les lots d’abord.', 4000); return; }
     if (zones.length <= 1) { toast('Il faut au moins une zone'); return; }
     if (!confirm(`Supprimer la zone « ${z.nom} » ?`)) return;
     zones.splice(zones.indexOf(z), 1);
-    S.lots.filter((l) => l.lieu === z.id).forEach((l) => delLot(l));
+    for (const l of S.lots.filter((x) => x.lieu === z.id)) await delLot(l);
     await saveSettings();
     dlg().close();
     render();
@@ -1263,6 +1421,12 @@ function renderPlus() {
     <h2>Historique des mouvements</h2>
     <select id="f-type">${options(Object.entries(TYPES).map(([v, t]) => ({ v, t })), S.fType, { empty: 'Tous les mouvements' })}</select>
     <div class="hist-wrap">${historyList(mv.slice().sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 300).map((m) => ({ ...m, note: [plabel(m), lieuNom(m.lieu), m.note].filter(Boolean).join(' · ') })))}</div>
+  </section>
+
+  <section class="card">
+    <h2>Modules</h2>
+    <label class="check big-check"><input type="checkbox" id="mod-liv" ${s.livraisons ? 'checked' : ''}> Commandes et livraisons aux clients</label>
+    <p class="hint">Désactivé : l’application ne gère que le stock et les entrées de bois.</p>
   </section>
 
   <section class="card">
@@ -1295,7 +1459,7 @@ function renderPlus() {
         <label>Longueurs<textarea name="longueurs" rows="6">${esc(s.longueurs.join('\n'))}</textarea></label>
       </div>
       <label>Contenants <small class="muted">(nom = unité = stères, ex. « Caisse = caisse = 0,7 »)</small><textarea name="contenants" rows="4">${esc(s.contenants.map((c) => `${c.nom} = ${c.unite} = ${String(c.steres ?? '').replace('.', ',')}`).join('\n'))}</textarea></label>
-      <p class="hint">Les zones de stockage se gèrent dans l’onglet <b>Place</b>.</p>
+      <p class="hint">Les zones de stockage se dessinent dans l’onglet <b>Zones</b>.</p>
       <label>Entreprises / fournisseurs<textarea name="entreprises" rows="4">${esc(s.entreprises.join('\n'))}</textarea></label>
       <h3>Coordonnées pour le bon de livraison</h3>
       <div class="grid2">
@@ -1323,6 +1487,7 @@ function renderPlus() {
 function bindPlus(root) {
   $('#f-type', root).onchange = (e) => { S.fType = e.target.value; render(); };
   $$('li[data-mvt]', root).forEach((li) => li.addEventListener('click', () => openMvt(li.dataset.mvt)));
+  $('#mod-liv', root).onchange = async (e) => { S.settings.livraisons = e.target.checked; await saveSettings(); render(); };
   $('#csv-stock', root).onclick = () => exportCSV('stock');
   $('#csv-mvts', root).onclick = () => exportCSV('mouvements');
   $('#csv-cmds', root).onclick = () => exportCSV('commandes');
@@ -1433,15 +1598,17 @@ async function restore(file) {
 
 const VIEWS = {
   stock: { title: 'Stock', render: renderStock, bind: bindStock },
-  place: { title: 'Place et zones', render: renderPlace, bind: bindPlace },
+  place: { title: 'Zones sur la carte', render: renderPlace, bind: bindPlace },
   entrees: { title: 'Entrées de bois', render: renderEntrees, bind: bindEntrees },
   livraisons: { title: 'Commandes & livraisons', render: renderLivraisons, bind: bindLivraisons },
   plus: { title: 'Historique & réglages', render: renderPlus, bind: bindPlus },
 };
 
 function render() {
+  if (!S.settings.livraisons && S.view === 'livraisons') S.view = 'stock';
   const v = VIEWS[S.view];
   const main = $('#view');
+  destroyMap();
   const scroll = main.scrollTop;
   main.innerHTML = v.render();
   v.bind(main);
@@ -1451,6 +1618,7 @@ function render() {
   $$('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.view === S.view));
   $('#dl-entreprises').innerHTML = S.settings.entreprises.map((e) => `<option value="${esc(e)}">`).join('');
   const nbLiv = S.cmds.filter((c) => c.statut === 'planifiee' && c.datePrevue <= today()).length;
+  $('.tabs [data-view=livraisons]').hidden = !S.settings.livraisons;
   const badge = $('.tabs [data-view=livraisons] i');
   badge.textContent = nbLiv || '';
   badge.hidden = !nbLiv;
