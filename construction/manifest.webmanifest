@@ -1,0 +1,33 @@
+{
+  "name": "Chantier construction",
+  "short_name": "Construction",
+  "description": "Plans de chantier de construction (barrières, passerelles, caissons, escaliers…) et fiche chantier. Triage forestier du Vallon.",
+  "lang": "fr-CH",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#1f3f5b",
+  "icons": [
+    {
+      "src": "icons/logo-vallon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/logo-vallon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/logo-vallon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "./"
+}
