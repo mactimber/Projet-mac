@@ -76,6 +76,7 @@ const S = {
   fType: '',
   drawing: null, // zone en cours de dessin sur la carte
   editing: null, // zone dont on corrige le contour
+  calibrating: false, // réglage de l'échelle de la photo
   placingGrid: null, // zone en rangées à placer (coin + alignement)
   adjusting: null, // zone en rangées à ajuster
   pas: 0.1,
@@ -206,7 +207,7 @@ function usedPhotos() {
   const used = new Set();
   for (const o of [...S.lots, ...S.mvts, ...S.cmds]) for (const id of o.photos || []) used.add(id);
   for (const c of S.cmds) for (const id of c.livraison?.photos || []) used.add(id);
-  if (S.settings?.fond?.photo) used.add(S.settings.fond.photo);
+  if (S.settings?.plan?.photo) used.add(S.settings.plan.photo);
   return used;
 }
 
@@ -1301,6 +1302,7 @@ function zoneProche(p, exceptId) {
 
 function renderPlace() {
   const zones = S.settings.lieux;
+  const pl = S.settings.plan;
   const drawing = S.drawing && zones.find((z) => z.id === S.drawing);
   const editing = S.editing && zones.find((z) => z.id === S.editing);
   const placing = S.placingGrid && zones.find((z) => z.id === S.placingGrid);
@@ -1310,10 +1312,12 @@ function renderPlace() {
   return `
   <section class="card map-card">
     <div class="row between"><h2>Secteur du bois de feu</h2>
-      <span class="row"><button type="button" class="small" id="btn-gps">◎ Ma position</button><button type="button" class="small" id="btn-fit">⤢ Tout voir</button></span></div>
+      <span class="row">${pl ? '' : '<button type="button" class="small" id="btn-gps">◎ Ma position</button>'}<button type="button" class="small" id="btn-fit">⤢ Tout voir</button></span></div>
+    ${pl && !pl.echelleOk && !S.calibrating ? '<p class="alert">📏 Réglez l’échelle de la photo pour que les zones aient la bonne taille. <button type="button" class="link" id="btn-cal2">Régler maintenant</button></p>' : ''}
+    ${S.calibrating ? `<p class="placing-bar"><span id="cal-txt">📏 Touchez le <b>début</b> d’une longueur que vous connaissez (bord du hangar, une rangée de caisses…).</span><button type="button" class="small" id="cancel-cal">Annuler</button></p>` : ''}
     ${drawing ? `<p class="placing-bar"><span>Dessin de « <b>${esc(drawing.nom)}</b> » : touchez chaque coin, puis le premier point pour fermer.</span><button type="button" class="small" id="cancel-draw">Annuler</button></p>` : ''}
     ${editing ? `<p class="placing-bar"><span>Glissez les points de « <b>${esc(editing.nom)}</b> » pour corriger le contour.</span><button type="button" class="small primary" id="end-edit">Terminer</button></p>` : ''}
-    ${placing ? `<p class="placing-bar"><span>« <b>${esc(placing.nom)}</b> » : <b>touchez la carte</b> à l’endroit de la zone.</span><button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
+    ${placing ? `<p class="placing-bar"><span>« <b>${esc(placing.nom)}</b> » : <b>touchez ${pl ? 'la photo' : 'la carte'}</b> à l’endroit de la zone.</span><button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
     ${adjusting ? `<div class="adjust-bar">
         <p class="m0"><b>${esc(adjusting.nom)}</b> : glissez la zone avec le doigt. Près d’une autre zone, elle s’y colle toute seule (${fmtQ(S.settings.ecartZones ?? 0.5)} m d’espace).</p>
         <div class="row mt">
@@ -1322,22 +1326,19 @@ function renderPlace() {
           <span class="spacer"></span><button type="button" class="primary" id="adj-end">✓ Terminer</button>
         </div>
       </div>` : ''}
-    <div id="zmap" class="zmap ${drawing || placing ? 'placing' : ''}"></div>
+    <div id="zmap" class="zmap ${drawing || placing || S.calibrating ? 'placing' : ''}"></div>
     <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>
     ${sansContour.length && !drawing && !placing ? `<p class="hint">Pas encore placée${sansContour.length > 1 ? 's' : ''} sur la carte : ${sansContour.map((z) => `<button type="button" class="link" data-zone-edit="${esc(z.id)}">${esc(z.nom)}</button>`).join(', ')}</p>` : ''}
-    <details class="backup"${S.settings.fond ? '' : ' open'}><summary>Mon propre fond de plan (image retouchée)</summary>
-      <ol class="hint steps-list">
-        <li>Cadrez la carte sur la place (toute la zone utile visible), puis :<br><button type="button" class="small" id="btn-fond-export">⬇ Télécharger la vue (photo aérienne)</button></li>
-        <li>Faites retirer les anciens tas par une IA (<b>sans recadrer ni changer les proportions</b> de l’image).</li>
-        <li><label class="btn small">⬆ Importer l’image retouchée<input type="file" accept="image/*" id="fond-file" hidden></label></li>
-      </ol>
-      ${S.settings.fond ? `<div class="row"><label class="grow">Visibilité<input type="range" id="fond-op" min="0.2" max="1" step="0.05" value="${S.settings.fond.opacite ?? 1}"></label><button type="button" class="small danger" id="btn-fond-del">Retirer mon fond</button></div>` : ''}
-    </details>
-    <details class="backup"><summary>Carte sans réseau</summary>
+    <div class="row mt">
+      <label class="btn small">📷 ${pl ? 'Changer la photo de la place' : 'Choisir la photo de la place'}<input type="file" accept="image/*" id="plan-file" hidden></label>
+      ${pl ? '<button type="button" class="small" id="btn-cal">📏 Régler l’échelle</button>' : ''}
+    </div>
+    ${pl ? (pl.echelleOk ? `<p class="hint">Échelle : 1 m = ${fmtQ(Math.round(1 / pl.mpp))} pixels de la photo.</p>` : '') : '<p class="hint">Mettez une photo vue du dessus de vos places de stockage (par ex. une capture d’écran satellite, nettoyée). Vous zoomerez dessus et y placerez vos zones. En attendant, la carte swisstopo est affichée.</p>'}
+    ${pl ? '' : `<details class="backup"><summary>Carte sans réseau</summary>
       <p class="hint">Centrez la carte sur le secteur, puis enregistrez-la : elle restera disponible sans réseau.</p>
       <button type="button" id="btn-offline">⬇ Enregistrer cette partie de la carte</button>
       <progress id="offline-progress" hidden></progress><p class="hint" id="offline-status"></p>
-    </details>
+    </details>`}
   </section>
 
   <button class="primary big" id="btn-new-zone">+ Nouvelle zone</button>
@@ -1385,60 +1386,55 @@ function drawZone(z, group, root) {
 function bindPlace(root) {
   const zones = S.settings.lieux;
   unitLayers = {};
-  map = L.map($('#zmap', root), { maxZoom: 22, minZoom: 8, zoomControl: true });
+  const pl = S.settings.plan;
+  map = L.map($('#zmap', root), { maxZoom: pl ? 25 : 22, minZoom: 8, zoomControl: true, zoomSnap: 0.25 });
   window.bfMap = map; // accès pour le diagnostic
   map.attributionControl.setPrefix(false);
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
-  const photo = L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
-  const carte = L.tileLayer(wmts('ch.swisstopo.pixelkarte-farbe'), { maxNativeZoom: 18, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
-  // Plan vide : fond blanc + plan cadastral (bâtiments, routes, parcelles), sans les anciens tas de la photo.
-  const cadastre = () => L.tileLayer.wms('https://wms.geo.admin.ch/', {
-    layers: 'ch.kantone.cadastralwebmap-farbe', format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512,
-    maxZoom: 22, opacity: 0.9, crossOrigin: 'anonymous', attribution: '© geo.admin.ch, cadastre', lang: 'fr',
-  });
-  const plan = L.layerGroup([cadastre()]);
-  const pale = L.layerGroup([
-    L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous', opacity: 0.3 }),
-    cadastre(),
-  ]);
-  const bases = { plan, pale, photo, carte };
-  fondLayer = null;
-  if (S.settings.fond) {
-    const f = S.settings.fond;
-    fondLayer = L.imageOverlay('', f.bounds, { opacity: f.opacite ?? 1, interactive: false });
-    photoURL(f.photo).then((u) => fondLayer && fondLayer.setUrl(u));
-    bases.mien = L.layerGroup([fondLayer, cadastre()]);
+  let planBounds = null;
+  if (pl) {
+    // Photo de la place : affichée seule, sans carte, à l'échelle réglée.
+    planBounds = L.latLngBounds(planCoins(pl));
+    const ov = L.imageOverlay('', planBounds, { interactive: false }).addTo(map);
+    photoURL(pl.photo).then((u) => ov.setUrl(u));
+    map.getContainer().classList.add('fond-blanc');
+    map.setMaxBounds(planBounds.pad(0.5));
+  } else {
+    const photo = L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
+    const carte = L.tileLayer(wmts('ch.swisstopo.pixelkarte-farbe'), { maxNativeZoom: 18, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
+    const bases = { photo, carte };
+    const setFond = (id) => {
+      S.base = id;
+      try { localStorage.setItem('bf-base', id); } catch { /* stockage indisponible */ }
+    };
+    (bases[S.base] || photo).addTo(map);
+    setFond(bases[S.base] ? S.base : 'photo');
+    L.control.layers({ 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
+    map.on('baselayerchange', (e) => setFond(e.layer === carte ? 'carte' : 'photo'));
   }
-  const setFond = (id) => {
-    S.base = id;
-    try { localStorage.setItem('bf-base', id); } catch { /* stockage indisponible */ }
-    map.getContainer().classList.toggle('fond-blanc', id === 'plan' || id === 'pale' || id === 'mien');
-  };
-  (bases[S.base] || plan).addTo(map);
-  setFond(bases[S.base] ? S.base : 'plan');
-  L.control.layers({ ...(bases.mien ? { 'Mon fond de plan': bases.mien } : {}), 'Plan vide (bâtiments)': plan, 'Photo pâle': pale, 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
-  map.on('baselayerchange', (e) => setFond(Object.keys(bases).find((k) => bases[k] === e.layer) || 'plan'));
   map.pm.setLang('fr');
 
   const group = L.featureGroup().addTo(map);
   for (const z of zones) drawZone(z, group, root);
   const fitAll = () => {
-    if (group.getLayers().length) map.fitBounds(group.getBounds().pad(0.25), { maxZoom: 20 });
+    if (planBounds) map.fitBounds(planBounds);
+    else if (group.getLayers().length) map.fitBounds(group.getBounds().pad(0.25), { maxZoom: 20 });
     else map.setView(RECHY, 16);
   };
+  if (planBounds) map.setMinZoom(map.getBoundsZoom(planBounds) - 1);
   if (S.focusRing) { map.fitBounds(L.polygon(S.focusRing).getBounds().pad(0.25), { maxZoom: 22 }); S.focusRing = null; } else if (S.mapView) map.setView(S.mapView.c, S.mapView.z); else fitAll();
   const zoomCls = () => {
     const c = map.getContainer().classList;
     const zm = map.getZoom();
-    c.toggle('z-far', zm < 18);
-    c.toggle('z-mid', zm >= 18 && zm < 21);
+    c.toggle('z-far', zm < 18 && !pl);
+    c.toggle('z-mid', zm < 21);
   };
   map.on('zoomend', zoomCls);
   zoomCls();
   setTimeout(() => map && map.invalidateSize(), 50);
 
   $('#btn-fit', root).onclick = fitAll;
-  $('#btn-gps', root).onclick = () => {
+  if ($('#btn-gps', root)) $('#btn-gps', root).onclick = () => {
     toast('Recherche de la position…');
     map.locate({ setView: true, maxZoom: 19, enableHighAccuracy: true });
   };
@@ -1540,24 +1536,44 @@ function bindPlace(root) {
     map.fitBounds(poly.getBounds().pad(0.25), { maxZoom: 22 });
     $('#zmap').scrollIntoView({ behavior: 'smooth' });
   }));
-  $('#btn-offline', root).onclick = saveOfflineTiles;
-  $('#btn-fond-export', root).onclick = exportVue;
-  $('#fond-file', root).onchange = (e) => importFond(e.target.files[0]);
-  const op = $('#fond-op', root);
-  if (op) {
-    op.oninput = () => { S.settings.fond.opacite = Number(op.value); fondLayer?.setOpacity(Number(op.value)); };
-    op.onchange = () => saveSettings();
-  }
-  const del = $('#btn-fond-del', root);
-  if (del) {
-    del.onclick = async () => {
-      if (!confirm('Retirer votre fond de plan ?')) return;
-      S.settings.fond = null;
-      if (S.base === 'mien') S.base = 'plan';
-      await saveSettings();
-      cleanPhotos(usedPhotos());
-      render();
-    };
+  if ($('#btn-offline', root)) $('#btn-offline', root).onclick = saveOfflineTiles;
+  $('#plan-file', root).onchange = (e) => choisirPlan(e.target.files[0]);
+  const cal = () => { Object.assign(S, { calibrating: true, drawing: null, editing: null, placingGrid: null, adjusting: null }); render(); $('#zmap')?.scrollIntoView({ behavior: 'smooth' }); };
+  $('#btn-cal', root) && ($('#btn-cal', root).onclick = cal);
+  $('#btn-cal2', root) && ($('#btn-cal2', root).onclick = cal);
+  if (S.calibrating) {
+    let a = null;
+    let mk = null;
+    $('#cancel-cal', root).onclick = () => { S.calibrating = false; render(); };
+    map.on('click', (e) => {
+      const p = [e.latlng.lat, e.latlng.lng];
+      if (!a) {
+        a = p;
+        mk = L.circleMarker(e.latlng, { radius: 6, color: '#000', weight: 2, fillColor: '#ffeb3b', fillOpacity: 1 }).addTo(map);
+        $('#cal-txt', root).innerHTML = '📏 Touchez maintenant la <b>fin</b> de cette longueur.';
+        return;
+      }
+      L.polyline([a, p], { color: '#ffeb3b', weight: 4 }).addTo(map);
+      L.circleMarker(e.latlng, { radius: 6, color: '#000', weight: 2, fillColor: '#ffeb3b', fillOpacity: 1 }).addTo(map);
+      const mesure = distM(a, p);
+      const form = openDlg('Longueur réelle', `
+        <p>Quelle est la longueur réelle de la ligne que vous venez de tracer ?</p>
+        <label>Longueur (m)<input name="m" inputmode="decimal" required placeholder="ex. 30"></label>
+        <p class="hint">Plus la longueur est grande, plus l’échelle est précise. Une caisse mesure 1,2 m de long.</p>`,
+      '<button type="button" data-close>Annuler</button><span class="spacer"></span><button class="primary">Valider</button>');
+      dlg().addEventListener('close', () => { if (S.calibrating) { S.calibrating = false; render(); } }, { once: true });
+      onSubmit(form, async (f) => {
+        const reel = num(f.m);
+        if (reel <= 0 || !mesure) { toast('Indiquez une longueur'); return; }
+        mettreAEchelle(reel / mesure);
+        S.calibrating = false;
+        await saveSettings();
+        dlg().close();
+        toast('Échelle enregistrée');
+        render();
+      });
+      void mk;
+    });
   }
   $('#btn-new-zone', root).onclick = () => zoneDialog();
   $$('[data-zone-edit]', root).forEach((b) => b.addEventListener('click', () => zoneDialog(zones.find((z) => z.id === b.dataset.zoneEdit))));
@@ -1578,77 +1594,49 @@ function startMode(mode, id, focusRing) {
   $('#zmap')?.scrollIntoView({ behavior: 'smooth' });
 }
 
-let fondLayer = null;
+// ---- Photo de la place (sans carte) : image placée autour d'un point fixe, à l'échelle mpp (mètres par pixel)
 
-// Télécharge la photo aérienne de la vue actuelle en haute définition et mémorise son emplacement exact.
-async function exportVue() {
-  if (!map) return;
-  const b = map.getBounds();
-  const taille = (z) => {
-    const a = map.project(b.getNorthWest(), z).round();
-    const c = map.project(b.getSouthEast(), z).round();
-    return { a, c, w: c.x - a.x, h: c.y - a.y };
-  };
-  let z = 20;
-  while (z > 14 && Math.max(taille(z).w, taille(z).h) > 4096) z--;
-  const { a, c, w, h } = taille(z);
-  toast('Préparation de l’image…', 4000);
-  const cv = document.createElement('canvas');
-  cv.width = w;
-  cv.height = h;
-  const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, w, h);
-  const jobs = [];
-  for (let tx = Math.floor(a.x / 256); tx <= Math.floor((c.x - 1) / 256); tx++) {
-    for (let ty = Math.floor(a.y / 256); ty <= Math.floor((c.y - 1) / 256); ty++) {
-      const url = wmts('ch.swisstopo.swissimage').replace('{z}', z).replace('{x}', tx).replace('{y}', ty);
-      jobs.push(new Promise((res) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => { ctx.drawImage(img, tx * 256 - a.x, ty * 256 - a.y); res(true); };
-        img.onerror = () => res(false);
-        img.src = url;
-      }));
-    }
-  }
-  const ok = (await Promise.all(jobs)).filter(Boolean).length;
-  if (!ok) { toast('Photo aérienne inaccessible (pas de réseau ?)', 4000); return; }
-  const nw = map.unproject(a, z);
-  const se = map.unproject(c, z);
-  S.settings.fondExport = { bounds: [[se.lat, nw.lng], [nw.lat, se.lng]], w, h, date: nowISO() };
-  await saveSettings();
-  cv.toBlob((blob) => {
-    download(`place-triage_${today()}.jpg`, blob);
-    toast(`Image téléchargée (${w} × ${h} px). Retouchez-la sans la recadrer, puis importez-la.`, 6000);
-  }, 'image/jpeg', 0.92);
+function planCoins(pl) {
+  const he = (pl.w * pl.mpp) / 2;
+  const hn = (pl.h * pl.mpp) / 2;
+  return [offsetLL(pl.center, -he, -hn), offsetLL(pl.center, he, hn)];
 }
 
-async function importFond(file) {
-  if (!file) return;
-  const ex = S.settings.fondExport;
-  let bounds = ex?.bounds;
-  if (!bounds) {
-    const b = map.getBounds();
-    bounds = [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]];
-    toast('Image placée sur la vue actuelle (pas de vue téléchargée avant).', 5000);
-  }
-  toast('Enregistrement de l’image…');
-  const id = await storePhoto(file, 4096, 0.85);
-  if (ex) {
-    // Vérifie que les proportions n'ont pas changé.
-    const u = await photoURL(id);
-    const img = await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = u; });
-    if (img && Math.abs(img.naturalWidth / img.naturalHeight - ex.w / ex.h) > 0.03) {
-      toast('Attention : l’image n’a plus les mêmes proportions, elle sera un peu déformée.', 6000);
+// Change l'échelle de la photo ; les zones restent au même endroit sur la photo (leur taille réelle ne change pas).
+function mettreAEchelle(k) {
+  const pl = S.settings.plan;
+  const c = pl.center;
+  const sc = (p) => fixLL([c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k]);
+  pl.mpp *= k;
+  pl.echelleOk = true;
+  for (const z of S.settings.lieux) {
+    if (z.grid?.origin) {
+      const ctr = sc(gridCentre(z.grid));
+      z.grid = gridAuCentre(z.grid, ctr);
+      z.ring = gridRing(z.grid);
+    } else if (z.ring) {
+      z.ring = z.ring.map(sc);
     }
   }
-  S.settings.fond = { photo: id, bounds, opacite: 1 };
-  S.base = 'mien';
-  try { localStorage.setItem('bf-base', 'mien'); } catch { /* */ }
+}
+
+async function choisirPlan(file) {
+  if (!file) return;
+  const ancien = S.settings.plan;
+  if (ancien && S.settings.lieux.some((z) => z.ring) && !confirm('Remplacer la photo de la place ?\nLes zones gardent leur position : vérifiez-les ensuite.')) return;
+  toast('Enregistrement de la photo…');
+  const id = await storePhoto(file, 4096, 0.88);
+  const img = await new Promise((r) => { photoURL(id).then((u) => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = u; }); });
+  if (!img) { toast('Photo illisible'); return; }
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  S.settings.plan = ancien
+    ? { ...ancien, photo: id, mpp: ancien.mpp * (ancien.w / w), w, h }
+    : { photo: id, w, h, mpp: 150 / Math.max(w, h), center: RECHY, echelleOk: false };
+  S.mapView = null;
   await saveSettings();
   cleanPhotos(usedPhotos());
-  toast('Votre fond de plan est en place');
+  toast(ancien ? 'Photo remplacée' : 'Photo en place : réglez maintenant l’échelle', 4000);
   render();
 }
 

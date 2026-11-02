@@ -30,9 +30,9 @@ Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 
    près d'une autre zone, l'**aimant** la colle à côté avec l'espace habituel (0,5 m, réglable dans le catalogue).
    Deux boutons servent à la tourner (1° ou 5°).
    Le dessin libre reste possible pour les zones irrégulières.
-   **Mon propre fond de plan** : « Télécharger la vue » enregistre la photo aérienne de l'écran en haute définition
-   (avec sa position exacte) ; après retouche (par ex. par une IA, sans recadrer), « Importer l'image retouchée »
-   la replace exactement au même endroit. Couleurs : 🟢 à prendre, 🔵 réserve, 🟠 en séchage / vert, ⚪ vide.
+   **Photo de la place** : on choisit sa propre photo vue du dessus (par ex. capture satellite nettoyée) ; elle remplace
+   la carte swisstopo. On règle une fois l'**échelle** en traçant une longueur connue et en indiquant sa taille en mètres :
+   les zones en rangées ont alors leur taille réelle sur la photo.
    La partie de la carte utile s'enregistre pour être consultée sans réseau.
    **Règle anti-picorage** : pour chaque produit, un seul lot est « à prendre » ; les autres restent en réserve.
    Quand le lot en cours est vide, l'application ouvre automatiquement la réserve suivante
