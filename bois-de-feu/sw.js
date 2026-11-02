@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne.
 
-const APP_CACHE = 'bf-app-v5';
+const APP_CACHE = 'bf-app-v6';
 const TILE_CACHE = 'bf-tiles-v1';
 const MAX_TILES = 6000;
 
@@ -44,7 +44,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.hostname === 'wmts.geo.admin.ch') { event.respondWith(tileFirst(req)); return; }
+  if (url.hostname === 'wmts.geo.admin.ch' || (url.hostname === 'wms.geo.admin.ch' && !/getcapabilities/i.test(url.search))) { event.respondWith(tileFirst(req)); return; }
   if (url.origin !== self.location.origin) return;
   event.respondWith(
     fetch(req, { cache: 'no-cache' })
