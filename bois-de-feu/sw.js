@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne.
 
-const APP_CACHE = 'bf-app-v1';
+const APP_CACHE = 'bf-app-v2';
 
 const APP_FILES = [
   './',

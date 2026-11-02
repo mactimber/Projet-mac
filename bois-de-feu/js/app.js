@@ -18,17 +18,41 @@ const TYPES = {
 const ENTREE_TYPES = ['facon', 'achat', 'propre', 'initial'];
 const STATUTS = { a_planifier: 'À planifier', planifiee: 'Planifiée', livree: 'Livrée – à facturer', facturee: 'Facturée' };
 
-const DEFAULT_SETTINGS = {
-  essences: ['Hêtre', 'Chêne', 'Frêne', 'Érable', 'Feuillus mélangés', 'Épicéa', 'Sapin', 'Mélèze', 'Pin'],
-  longueurs: ['1 m', '50 cm', '33 cm', '25 cm'],
+const SETTINGS_VERSION = 2;
+const TOUTES_LONGUEURS = ['1 m', '50 cm', '33 cm', '25 cm'];
+
+// Produits vendus : 1 m en ballots, le reste en big-bags, foyard 25 et 33 aussi en caisses.
+function defaultProduits() {
+  const out = [];
+  const add = (essence, longueurs) => longueurs.forEach((longueur) => {
+    out.push({ essence, longueur, contenant: longueur === '1 m' ? 'Ballot' : 'Big-bag' });
+    if (essence === 'Foyard' && (longueur === '33 cm' || longueur === '25 cm')) out.push({ essence, longueur, contenant: 'Caisse' });
+  });
+  add('Foyard', TOUTES_LONGUEURS);
+  add('Mélèze', TOUTES_LONGUEURS);
+  add('Épicéa', TOUTES_LONGUEURS);
+  add('Frêne', ['1 m', '33 cm']);
+  add('Feuillus indigènes', ['33 cm']);
+  add('Bouleau', ['50 cm']);
+  return out;
+}
+
+const DEFAULT_CATALOGUE = () => ({
+  essences: ['Foyard', 'Mélèze', 'Épicéa', 'Frêne', 'Feuillus indigènes', 'Bouleau'],
+  longueurs: [...TOUTES_LONGUEURS],
   contenants: [
-    { nom: 'Stère', unite: 'st' },
-    { nom: 'Palette', unite: 'pal.' },
-    { nom: 'Big-bag', unite: 'big-bag' },
-    { nom: 'Sac', unite: 'sac' },
-    { nom: 'Vrac (m³ apparent)', unite: 'm³' },
+    { nom: 'Ballot', unite: 'ballot', steres: 1 },
+    { nom: 'Big-bag', unite: 'bb', steres: 1 },
+    { nom: 'Caisse', unite: 'caisse', steres: 0.7 },
   ],
-  lieux: [{ id: 'depot', nom: 'Dépôt principal' }],
+  produits: defaultProduits(),
+});
+
+const DEFAULT_SETTINGS = {
+  version: SETTINGS_VERSION,
+  ...DEFAULT_CATALOGUE(),
+  lieux: [{ id: 'zA', nom: 'Zone A' }],
+  plan: null,
   entreprises: [],
   seuils: {},
   triage: { nom: 'Triage forestier du Vallon', adresse: 'Réchy', tel: '', email: '' },
@@ -47,6 +71,7 @@ const S = {
   fEtat: '',
   showEmpty: false,
   fType: '',
+  placing: null, // id de la zone à placer sur le plan
 };
 
 // ---------------------------------------------------------------- Outils
@@ -68,6 +93,10 @@ const plabel = (p) => `${p.essence} · ${p.longueur} · ${p.contenant}`;
 const unite = (contenant) => (S.settings.contenants.find((c) => c.nom === contenant) || {}).unite || contenant;
 const qty = (n, contenant) => `${fmtQ(n)} ${unite(contenant)}`;
 const lieuNom = (id) => (S.settings.lieux.find((l) => l.id === id) || {}).nom || '—';
+const parseKey = (k) => { const [essence, longueur, contenant] = String(k).split('|'); return { essence, longueur, contenant }; };
+const stPar = (contenant) => (S.settings.contenants.find((c) => c.nom === contenant) || {}).steres || 0;
+const steres = (n, contenant) => n * stPar(contenant);
+const fmtSt = (n, contenant) => (stPar(contenant) && stPar(contenant) !== 1 ? ` (≈ ${fmtQ(steres(n, contenant))} st)` : '');
 const snap = (l) => ({ essence: l.essence, longueur: l.longueur, contenant: l.contenant, lieu: l.lieu });
 
 function moisDepuis(date) {
@@ -101,15 +130,23 @@ function options(list, value, { empty } = {}) {
 }
 
 const lieuOptions = (v, opts) => options(S.settings.lieux.map((l) => ({ v: l.id, t: l.nom })), v, opts);
+const zoneIndex = (id) => { const i = S.settings.lieux.findIndex((z) => z.id === id); return i < 0 ? 999 : i; };
 const etatOptions = (v, opts) => options(Object.entries(ETATS).map(([k, t]) => ({ v: k, t })), v, opts);
 
-function productFields(p = {}, cls = '') {
-  const s = S.settings;
-  return `<div class="grid3 ${cls}">
-    <label>Essence<select name="essence" class="f-essence">${options(s.essences, p.essence || s.essences[0])}</select></label>
-    <label>Longueur<select name="longueur" class="f-longueur">${options(s.longueurs, p.longueur || s.longueurs[0])}</select></label>
-    <label>Contenant<select name="contenant" class="f-contenant">${options(s.contenants.map((c) => c.nom), p.contenant || s.contenants[0]?.nom)}</select></label>
-  </div>`;
+function produitOptions(value) {
+  const list = [...S.settings.produits];
+  if (value && !list.some((p) => pkey(p) === value)) list.push(parseKey(value));
+  const groups = new Map();
+  for (const p of list) {
+    if (!groups.has(p.essence)) groups.set(p.essence, []);
+    groups.get(p.essence).push(p);
+  }
+  return [...groups].map(([e, ps]) => `<optgroup label="${esc(e)}">${ps.map((p) => `<option value="${esc(pkey(p))}"${pkey(p) === value ? ' selected' : ''}>${esc(p.essence)} ${esc(p.longueur)} · ${esc(p.contenant)}</option>`).join('')}</optgroup>`).join('');
+}
+
+function productSelect(p) {
+  const value = p && p.essence ? pkey(p) : (S.settings.produits[0] ? pkey(S.settings.produits[0]) : '');
+  return `<label>Produit<select name="produit" class="f-produit" required>${produitOptions(value)}</select></label>`;
 }
 
 function formData(form) {
@@ -160,6 +197,7 @@ function usedPhotos() {
   const used = new Set();
   for (const o of [...S.lots, ...S.mvts, ...S.cmds]) for (const id of o.photos || []) used.add(id);
   for (const c of S.cmds) for (const id of c.livraison?.photos || []) used.add(id);
+  if (S.settings?.plan) used.add(S.settings.plan);
   return used;
 }
 
@@ -170,6 +208,68 @@ function addEntreprise(nom) {
     S.settings.entreprises.sort((a, b) => a.localeCompare(b, 'fr'));
     saveSettings();
   }
+}
+
+// ---------------------------------------------------------------- Zone à prendre / réserve
+// Pour chaque produit, un seul lot est « à prendre » (zone en cours). Les autres sont en réserve.
+// Quand le lot en cours est vide, on ouvre la réserve suivante : déjà entamée, puis sèche, puis la plus ancienne.
+
+function ordreReserve(lots) {
+  return [...lots].sort((a, b) => (a.role === 'prendre' ? 0 : 1) - (b.role === 'prendre' ? 0 : 1)
+    || (a.entame ? 0 : 1) - (b.entame ? 0 : 1)
+    || (a.etat === 'sec' ? 0 : 1) - (b.etat === 'sec' ? 0 : 1)
+    || (a.dateMise || '').localeCompare(b.dateMise || '')
+    || zoneIndex(a.lieu) - zoneIndex(b.lieu));
+}
+
+const lotCourant = (k) => S.lots.find((l) => pkey(l) === k && l.role === 'prendre' && l.quantite > 0);
+
+async function ensureCourant(k, { announce = true } = {}) {
+  const ls = S.lots.filter((l) => pkey(l) === k);
+  for (const l of ls) {
+    if (l.quantite <= 0 && (l.role === 'prendre' || l.entame)) { l.role = 'reserve'; l.entame = false; await saveLot(l); }
+  }
+  const courants = ls.filter((l) => l.quantite > 0 && l.role === 'prendre');
+  if (courants.length > 1) {
+    for (const l of ordreReserve(courants).slice(1)) { l.role = 'reserve'; await saveLot(l); }
+    return;
+  }
+  if (courants.length === 1) return;
+  const next = ordreReserve(ls.filter((l) => l.quantite > 0 && l.etat === 'sec'))[0];
+  if (next) {
+    next.role = 'prendre';
+    await saveLot(next);
+    if (announce) setTimeout(() => toast(`👉 ${plabel(next)} : prendre maintenant en ${lieuNom(next.lieu)}`, 5000), 2500);
+  }
+}
+
+async function setCourant(lot) {
+  for (const l of S.lots) {
+    if (l.id !== lot.id && pkey(l) === pkey(lot) && l.role === 'prendre') { l.role = 'reserve'; await saveLot(l); }
+  }
+  lot.role = 'prendre';
+  await saveLot(lot);
+}
+
+// Répartit une quantité sur les lots, dans l'ordre (zone en cours puis réserves).
+// `used` mémorise ce qui est déjà pris (plusieurs lignes / commandes).
+function allocate(k, q, used = new Map(), forcedId = null) {
+  const avail = (l) => round(l.quantite - (used.get(l.id) || 0));
+  const cands = forcedId
+    ? S.lots.filter((l) => l.id === forcedId)
+    : ordreReserve(S.lots.filter((l) => pkey(l) === k && l.quantite > 0 && (l.etat === 'sec' || l.role === 'prendre')));
+  const parts = [];
+  let rest = round(q);
+  for (const l of cands) {
+    if (rest <= 0) break;
+    const a = avail(l);
+    if (a <= 0) continue;
+    const t = round(Math.min(a, rest));
+    parts.push({ lot: l, q: t });
+    used.set(l.id, round((used.get(l.id) || 0) + t));
+    rest = round(rest - t);
+  }
+  return { parts, manque: rest > 0 ? rest : 0 };
 }
 
 // ---------------------------------------------------------------- Dialogues
@@ -252,7 +352,7 @@ function resume(lieu = '') {
   const map = new Map();
   const get = (p) => {
     const k = pkey(p);
-    if (!map.has(k)) map.set(k, { k, p: { essence: p.essence, longueur: p.longueur, contenant: p.contenant }, total: 0, sec: 0, autre: 0, aLivrer: 0 });
+    if (!map.has(k)) map.set(k, { k, p: parseKey(k), total: 0, sec: 0, autre: 0, aLivrer: 0 });
     return map.get(k);
   };
   for (const l of S.lots) {
@@ -266,12 +366,10 @@ function resume(lieu = '') {
       if (c.statut !== 'a_planifier' && c.statut !== 'planifiee') continue;
       for (const li of c.lignes) get(li).aLivrer += num(li.quantite);
     }
-    for (const k of Object.keys(S.settings.seuils)) {
-      const [essence, longueur, contenant] = k.split('|');
-      get({ essence, longueur, contenant });
-    }
+    for (const k of Object.keys(S.settings.seuils)) get(parseKey(k));
   }
-  return [...map.values()].sort((a, b) => plabel(a.p).localeCompare(plabel(b.p), 'fr'));
+  const ordre = new Map(S.settings.produits.map((p, i) => [pkey(p), i]));
+  return [...map.values()].sort((a, b) => (ordre.get(a.k) ?? 999) - (ordre.get(b.k) ?? 999) || plabel(a.p).localeCompare(plabel(b.p), 'fr'));
 }
 
 function alerte(r) {
@@ -288,39 +386,44 @@ function renderStock() {
   const rows = resume(S.fLieu);
   const lots = S.lots
     .filter((l) => (S.showEmpty || l.quantite > 0) && (!S.fLieu || l.lieu === S.fLieu) && (!S.fEtat || l.etat === S.fEtat))
-    .sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr') || (a.dateMise || '').localeCompare(b.dateMise || ''));
+    .sort((a, b) => zoneIndex(a.lieu) - zoneIndex(b.lieu) || plabel(a).localeCompare(plabel(b), 'fr') || (a.dateMise || '').localeCompare(b.dateMise || ''));
   const parLieu = new Map();
   for (const l of lots) {
     if (!parLieu.has(l.lieu)) parLieu.set(l.lieu, []);
     parLieu.get(l.lieu).push(l);
   }
   const nbAlertes = rows.filter(alerte).length;
+  let totSt = 0;
+  let secSt = 0;
+  for (const r of rows) { totSt += steres(r.total, r.p.contenant); secSt += steres(r.sec, r.p.contenant); }
 
   return `
   <div class="filters row">
-    <select id="f-lieu" aria-label="Lieu">${lieuOptions(S.fLieu, { empty: 'Tous les lieux' })}</select>
+    <select id="f-lieu" aria-label="Zone">${lieuOptions(S.fLieu, { empty: 'Toutes les zones' })}</select>
     <select id="f-etat" aria-label="État">${etatOptions(S.fEtat, { empty: 'Tous les états' })}</select>
   </div>
 
   <section class="card">
     <h2>Stock total ${S.fLieu ? `<small>· ${esc(lieuNom(S.fLieu))}</small>` : ''}</h2>
+    ${totSt ? `<p class="totst">≈ <b>${fmtQ(totSt)} stères</b>${secSt !== totSt ? ` <span class="muted">dont ${fmtQ(secSt)} st secs</span>` : ''}</p>` : ''}
     ${nbAlertes ? `<p class="alert">⚠ ${nbAlertes} produit${nbAlertes > 1 ? 's' : ''} en stock bas ou insuffisant pour les commandes</p>` : ''}
     ${rows.length ? `<table class="sum">
       <thead><tr><th>Produit</th><th>Stock</th>${S.fLieu ? '' : '<th>À livrer</th><th>Reste</th>'}</tr></thead>
       <tbody>${rows.map((r) => {
         const a = alerte(r);
+        const cour = lotCourant(r.k);
         return `<tr data-seuil="${esc(r.k)}" class="${a}">
-          <td><b>${esc(r.p.essence)}</b> <span class="muted">${esc(r.p.longueur)} · ${esc(r.p.contenant)}</span>
-            <div class="tiny">${r.sec ? `sec ${fmtQ(r.sec)}` : ''}${r.sec && r.autre ? ' · ' : ''}${r.autre ? `en séchage / vert ${fmtQ(r.autre)}` : ''}${S.settings.seuils[r.k] !== undefined ? ` · alerte sous ${fmtQ(S.settings.seuils[r.k])}` : ''}</div></td>
-          <td class="n">${qty(r.total, r.p.contenant)}</td>
+          <td><b>${esc(r.p.essence)} ${esc(r.p.longueur)}</b> <span class="muted">${esc(r.p.contenant)}</span>
+            <div class="tiny">${cour ? `<span class="take">👉 ${esc(lieuNom(cour.lieu))}</span> ` : (r.total ? '<span class="alert-txt">pas de zone à prendre</span> ' : '')}${r.autre ? `<span class="muted">séchage / vert ${fmtQ(r.autre)}</span>` : ''}${S.settings.seuils[r.k] !== undefined ? ` <span class="muted">· alerte sous ${fmtQ(S.settings.seuils[r.k])}</span>` : ''}</div></td>
+          <td class="n">${qty(r.total, r.p.contenant)}${stPar(r.p.contenant) && stPar(r.p.contenant) !== 1 && r.total ? `<div class="tiny muted">≈ ${fmtQ(steres(r.total, r.p.contenant))} st</div>` : ''}</td>
           ${S.fLieu ? '' : `<td class="n">${r.aLivrer ? fmtQ(r.aLivrer) : '–'}</td><td class="n"><b>${fmtQ(r.total - r.aLivrer)}</b>${a ? ' ⚠' : ''}</td>`}
         </tr>`;
       }).join('')}</tbody></table>
-      <p class="hint">Touchez une ligne pour régler un seuil d’alerte.</p>` : '<p class="hint">Aucun bois en stock pour le moment. Ajoutez un lot ci-dessous ou enregistrez une entrée de bois.</p>'}
+      <p class="hint">👉 = zone où l’on prend ce bois. Touchez une ligne pour régler un seuil d’alerte.</p>` : '<p class="hint">Aucun bois en stock pour le moment. Ajoutez un lot ci-dessous ou enregistrez une entrée de bois.</p>'}
   </section>
 
   <div class="row between">
-    <h2 class="sec-title">Lots (tas, palettes…)</h2>
+    <h2 class="sec-title">Lots par zone</h2>
     <label class="check"><input type="checkbox" id="f-empty" ${S.showEmpty ? 'checked' : ''}> lots vides</label>
   </div>
   <button class="primary big" id="btn-new-lot">+ Ajouter un lot au stock</button>
@@ -330,14 +433,19 @@ function renderStock() {
   `;
 }
 
+function roleBadge(l) {
+  if (l.quantite <= 0) return '<span class="badge vide">Vide</span>';
+  if (l.role === 'prendre') return '<span class="badge prendre">👉 À prendre</span>';
+  return '<span class="badge reserve">Réserve</span>';
+}
+
 function lotCard(l) {
-  return `<div class="lot ${l.quantite <= 0 ? 'empty' : ''}" data-lot="${esc(l.id)}">
+  return `<div class="lot ${l.quantite <= 0 ? 'empty' : ''} ${l.role === 'prendre' && l.quantite > 0 ? 'courant' : ''}" data-lot="${esc(l.id)}">
     ${l.photos?.length ? `<img class="thumb" data-photo="${esc(l.photos[0])}" alt="">` : '<div class="thumb ph-none">🪵</div>'}
     <div class="lot-main">
-      <b>${esc(l.essence)}</b> <span>${esc(l.longueur)} · ${esc(l.contenant)}</span>
-      <div class="tiny"><span class="badge ${l.etat}">${esc(ETATS[l.etat] || l.etat)}</span>
-        ${l.dateMise ? `depuis ${moisDepuis(l.dateMise)}` : ''}${l.humidite ? ` · ${fmtQ(l.humidite)} % hum.` : ''}${l.photos?.length > 1 ? ` · ${l.photos.length} 📷` : ''}</div>
-      ${l.note ? `<div class="tiny muted">${esc(l.note)}</div>` : ''}
+      <b>${esc(l.essence)} ${esc(l.longueur)}</b> <span>${esc(l.contenant)}</span>
+      <div class="tiny">${roleBadge(l)}<span class="badge ${l.etat}">${esc(ETATS[l.etat] || l.etat)}</span></div>
+      <div class="tiny muted">${l.dateMise ? `depuis ${moisDepuis(l.dateMise)}` : ''}${l.humidite ? ` · ${fmtQ(l.humidite)} % hum.` : ''}${l.photos?.length > 1 ? ` · ${l.photos.length} 📷` : ''}${l.note ? ` · ${esc(l.note)}` : ''}</div>
     </div>
     <div class="qty">
       <button type="button" data-dec aria-label="Moins">−</button>
@@ -347,13 +455,8 @@ function lotCard(l) {
   </div>`;
 }
 
-function bindStock(root) {
-  $('#f-lieu', root).onchange = (e) => { S.fLieu = e.target.value; render(); };
-  $('#f-etat', root).onchange = (e) => { S.fEtat = e.target.value; render(); };
-  $('#f-empty', root).onchange = (e) => { S.showEmpty = e.target.checked; render(); };
-  $('#btn-new-lot', root).onclick = () => lotDialog();
-  $$('tr[data-seuil]', root).forEach((tr) => tr.addEventListener('click', () => seuilDialog(tr.dataset.seuil)));
-  $$('.lot', root).forEach((el) => {
+function bindLots(root) {
+  $$('.lot[data-lot]', root).forEach((el) => {
     const lot = S.lots.find((l) => l.id === el.dataset.lot);
     el.addEventListener('click', (e) => {
       if (e.target.closest('[data-dec]')) quickAdjust(lot, -1);
@@ -361,6 +464,15 @@ function bindStock(root) {
       else lotDialog(lot);
     });
   });
+}
+
+function bindStock(root) {
+  $('#f-lieu', root).onchange = (e) => { S.fLieu = e.target.value; render(); };
+  $('#f-etat', root).onchange = (e) => { S.fEtat = e.target.value; render(); };
+  $('#f-empty', root).onchange = (e) => { S.showEmpty = e.target.checked; render(); };
+  $('#btn-new-lot', root).onclick = () => lotDialog(null, { lieu: S.fLieu });
+  $$('tr[data-seuil]', root).forEach((tr) => tr.addEventListener('click', () => seuilDialog(tr.dataset.seuil)));
+  bindLots(root);
 }
 
 // Boutons + / − : correction rapide d'inventaire (regroupée sur 2 minutes).
@@ -377,16 +489,17 @@ async function quickAdjust(lot, d) {
   } else {
     await saveMvt({ type: 'inventaire', lotId: lot.id, delta, quick: true, ...snap(lot) });
   }
+  await ensureCourant(pkey(lot));
   render();
 }
 
 function seuilDialog(k) {
-  const [essence, longueur, contenant] = k.split('|');
+  const p = parseKey(k);
   const cur = S.settings.seuils[k];
   const form = openDlg('Seuil d’alerte', `
-    <p><b>${esc(plabel({ essence, longueur, contenant }))}</b></p>
+    <p><b>${esc(plabel(p))}</b></p>
     <p class="hint">Une alerte s’affiche quand le stock restant (après les commandes à livrer) passe sous ce seuil.</p>
-    <label>Alerte en dessous de (${esc(unite(contenant))})<input name="seuil" inputmode="decimal" value="${cur ?? ''}" placeholder="aucune alerte"></label>`,
+    <label>Alerte en dessous de (${esc(unite(p.contenant))})<input name="seuil" inputmode="decimal" value="${cur ?? ''}" placeholder="aucune alerte"></label>`,
   '<button type="button" data-close>Annuler</button><span class="spacer"></span><button class="primary">Enregistrer</button>');
   onSubmit(form, async (f) => {
     if (String(f.seuil).trim() === '') delete S.settings.seuils[k];
@@ -405,20 +518,28 @@ function historyList(mvts) {
       <span class="q ${m.delta < 0 ? 'neg' : 'pos'}">${m.delta > 0 ? '+' : ''}${qty(m.delta, m.contenant)}</span></li>`).join('')}</ul>`;
 }
 
-function lotDialog(lot) {
+function lotDialog(lot, defaults = {}) {
   const isNew = !lot;
   const s = S.settings;
+  const p0 = s.produits[0] || {};
   const l = lot ? { ...lot } : {
-    id: uid(), essence: s.essences[0], longueur: s.longueurs[0], contenant: s.contenants[0]?.nom,
-    etat: 'sec', lieu: S.fLieu || s.lieux[0]?.id, quantite: 0, dateMise: today(), photos: [], created: nowISO(),
+    id: uid(), essence: p0.essence, longueur: p0.longueur, contenant: p0.contenant,
+    etat: 'sec', lieu: defaults.lieu || s.lieux[0]?.id, quantite: 0, dateMise: today(), photos: [], created: nowISO(), role: 'reserve',
   };
+  const roleDefaut = (k, etat) => (lot ? lot.role : (etat === 'sec' && !lotCourant(k) ? 'prendre' : 'reserve'));
   const form = openDlg(isNew ? 'Nouveau lot' : 'Lot de bois', `
-    ${productFields(l)}
+    ${productSelect(l)}
     <div class="grid2">
+      <label>Zone<select name="lieu">${lieuOptions(l.lieu)}</select></label>
       <label>État<select name="etat">${etatOptions(l.etat)}</select></label>
-      <label>Lieu<select name="lieu">${lieuOptions(l.lieu)}</select></label>
-      <label>Quantité (${esc(unite(l.contenant))})<input name="quantite" inputmode="decimal" required value="${isNew ? '' : fmtQ(l.quantite).replace(/\s/g, '')}" placeholder="0"></label>
+      <label>Quantité (<span id="u">${esc(unite(l.contenant))}</span>)<input name="quantite" inputmode="decimal" required value="${isNew ? '' : fmtQ(l.quantite).replace(/\s/g, '')}" placeholder="0"></label>
       <label>Mis en tas le<input type="date" name="dateMise" value="${esc(l.dateMise || '')}"></label>
+    </div>
+    <label>Utilisation<select name="role">
+      <option value="prendre">👉 À prendre – c’est ici qu’on se sert</option>
+      <option value="reserve">Réserve – ne pas toucher pour l’instant</option></select></label>
+    <p class="hint" id="role-hint"></p>
+    <div class="grid2">
       <label>Provenance<input name="provenance" value="${esc(l.provenance || '')}" placeholder="coupe, fournisseur…"></label>
       <label>Humidité %<input name="humidite" inputmode="decimal" value="${l.humidite ?? ''}" placeholder="humidimètre"></label>
     </div>
@@ -429,19 +550,31 @@ function lotDialog(lot) {
   `, `${isNew ? '' : '<button type="button" class="danger" id="btn-del">Supprimer</button>'}<span class="spacer"></span>
       <button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>`);
   const photos = photoEditor($('#pe', form), l.photos);
-  const unitLabel = () => { $('[name=quantite]', form).previousSibling.textContent = `Quantité (${unite($('[name=contenant]', form).value)})`; };
-  $('[name=contenant]', form).addEventListener('change', unitLabel);
+  const refresh = (first) => {
+    const k = form.produit.value;
+    $('#u', form).textContent = unite(parseKey(k).contenant);
+    if (first) form.role.value = roleDefaut(k, form.etat.value);
+    const cour = lotCourant(k);
+    $('#role-hint', form).textContent = cour && cour.id !== l.id
+      ? `Actuellement on prend ce bois en « ${lieuNom(cour.lieu)} » (${qty(cour.quantite, cour.contenant)}). Choisir « À prendre » mettra l’autre lot en réserve.`
+      : '';
+  };
+  form.produit.addEventListener('change', () => refresh(isNew));
+  refresh(true);
 
   onSubmit(form, async (f) => {
     const oldQ = isNew ? 0 : lot.quantite;
-    Object.assign(l, {
-      essence: f.essence, longueur: f.longueur, contenant: f.contenant, etat: f.etat, lieu: f.lieu,
+    const oldK = isNew ? null : pkey(lot);
+    Object.assign(l, parseKey(f.produit), {
+      etat: f.etat, lieu: f.lieu, role: f.role,
       quantite: Math.max(0, round(num(f.quantite))), dateMise: f.dateMise, provenance: f.provenance.trim(),
       humidite: String(f.humidite).trim() ? num(f.humidite) : null, note: f.note.trim(), photos: [...photos],
     });
-    await saveLot(l);
+    if (l.role === 'prendre') await setCourant(l); else await saveLot(l);
     const d = round(l.quantite - oldQ);
     if (d) await saveMvt({ type: isNew ? 'initial' : 'inventaire', lotId: l.id, delta: d, ...snap(l) });
+    await ensureCourant(pkey(l), { announce: l.role !== 'prendre' });
+    if (oldK && oldK !== pkey(l)) await ensureCourant(oldK);
     dlg().close();
     toast(isNew ? 'Lot ajouté au stock' : 'Lot enregistré');
     render();
@@ -452,6 +585,7 @@ function lotDialog(lot) {
       if (!confirm('Supprimer ce lot ? (son historique est conservé)')) return;
       if (lot.quantite > 0) await saveMvt({ type: 'inventaire', lotId: lot.id, delta: -lot.quantite, note: 'Lot supprimé', ...snap(lot) });
       await delLot(lot);
+      await ensureCourant(pkey(lot));
       dlg().close();
       cleanPhotos(usedPhotos());
       render();
@@ -515,7 +649,7 @@ function entreeDialog(type, mvt) {
   const isNew = !mvt;
   const s = S.settings;
   const m = mvt ? { ...mvt } : {
-    type, date: today(), essence: s.essences[0], longueur: s.longueurs[0], contenant: s.contenants[0]?.nom,
+    type, date: today(), ...(s.produits[0] || {}),
     etat: type === 'achat' ? 'sec' : 'vert', lieu: s.lieux[0]?.id, photos: [],
   };
   const avecEntreprise = type !== 'propre' && type !== 'initial';
@@ -525,10 +659,10 @@ function entreeDialog(type, mvt) {
       <label>Date<input type="date" name="date" required value="${esc(m.date)}"></label>
       ${avecEntreprise ? `<label>${type === 'achat' ? 'Fournisseur' : 'Entreprise'}<input name="entreprise" list="dl-entreprises" value="${esc(m.entreprise || '')}" placeholder="nom"></label>` : ''}
     </div>
-    ${isNew ? `${productFields(m)}
+    ${isNew ? `${productSelect(m)}
     <div class="grid2">
       <label>État du bois<select name="etat">${etatOptions(m.etat)}</select></label>
-      <label>Lieu de stockage<select name="lieu">${lieuOptions(m.lieu)}</select></label>
+      <label>Zone de stockage<select name="lieu">${lieuOptions(m.lieu)}</select></label>
     </div>
     <label>Ajouter à<select name="cible" id="cible"></select></label>`
     : `<p class="box"><b>${esc(plabel(m))}</b> · ${esc(ETATS[m.etat] || '')}<br>📍 ${esc(lieuNom(m.lieu))}${lot ? '' : ' <span class="muted">(lot supprimé)</span>'}</p>`}
@@ -545,14 +679,14 @@ function entreeDialog(type, mvt) {
 
   const refreshCible = () => {
     if (!isNew) return;
-    const p = { essence: form.essence.value, longueur: form.longueur.value, contenant: form.contenant.value };
+    const p = parseKey(form.produit.value);
     const ls = lotsCompatibles(p, form.lieu.value);
-    $('#cible', form).innerHTML = '<option value="">Nouveau lot (nouveau tas / nouvelles palettes)</option>'
-      + ls.map((l) => `<option value="${esc(l.id)}">Lot existant : ${esc(ETATS[l.etat])}, ${qty(l.quantite, l.contenant)}${l.dateMise ? `, du ${fmtDate(l.dateMise)}` : ''}</option>`).join('');
+    $('#cible', form).innerHTML = '<option value="">Nouveau lot dans cette zone (en réserve)</option>'
+      + ls.map((l) => `<option value="${esc(l.id)}">Lot existant : ${l.role === 'prendre' ? '👉 à prendre' : 'réserve'}, ${esc(ETATS[l.etat])}, ${qty(l.quantite, l.contenant)}${l.dateMise ? `, du ${fmtDate(l.dateMise)}` : ''}</option>`).join('');
     $('#u', form).textContent = unite(p.contenant);
   };
   if (isNew) {
-    ['essence', 'longueur', 'contenant', 'lieu'].forEach((n) => form[n].addEventListener('change', refreshCible));
+    ['produit', 'lieu'].forEach((n) => form[n].addEventListener('change', refreshCible));
     refreshCible();
   }
 
@@ -571,17 +705,18 @@ function entreeDialog(type, mvt) {
         target.photos = [...new Set([...(target.photos || []), ...photos])];
       } else {
         target = {
-          id: uid(), essence: f.essence, longueur: f.longueur, contenant: f.contenant, etat: f.etat, lieu: f.lieu,
+          id: uid(), ...parseKey(f.produit), etat: f.etat, lieu: f.lieu, role: 'reserve',
           quantite: q, dateMise: f.date, provenance: [TYPES[type], common.entreprise].filter(Boolean).join(' – '),
           photos: [...photos], note: '', created: nowISO(),
         };
       }
       await saveLot(target);
       await saveMvt({ type, lotId: target.id, delta: q, etat: target.etat, ...snap(target), ...common });
-      toast(`+${qty(q, f.contenant)} ajouté au stock`);
+      toast(`+${qty(q, target.contenant)} ajouté au stock (${lieuNom(target.lieu)})`);
+      await ensureCourant(pkey(target));
     } else {
       const d = round(q - mvt.delta);
-      if (lot && d) { lot.quantite = Math.max(0, round(lot.quantite + d)); await saveLot(lot); }
+      if (lot && d) { lot.quantite = Math.max(0, round(lot.quantite + d)); await saveLot(lot); await ensureCourant(pkey(lot)); }
       await saveMvt({ ...mvt, ...common, delta: q });
       toast('Entrée modifiée');
     }
@@ -593,7 +728,7 @@ function entreeDialog(type, mvt) {
   if (!isNew) {
     $('#btn-del', form).onclick = async () => {
       if (!confirm(`Supprimer cette entrée ?${lot ? `\nLe stock du lot sera diminué de ${qty(mvt.delta, mvt.contenant)}.` : ''}`)) return;
-      if (lot) { lot.quantite = Math.max(0, round(lot.quantite - mvt.delta)); await saveLot(lot); }
+      if (lot) { lot.quantite = Math.max(0, round(lot.quantite - mvt.delta)); await saveLot(lot); await ensureCourant(pkey(lot)); }
       await delMvt(mvt);
       dlg().close();
       cleanPhotos(usedPhotos());
@@ -652,7 +787,8 @@ function renderLivraisons() {
     return `<div class="day ${d < today() ? 'late' : ''} ${d === today() ? 'today' : ''}">
       <div class="day-head"><b>${d === today() ? 'Aujourd’hui · ' : ''}${esc(fmtDay(d))}</b>
         <span class="tiny muted">${cs.length} livraison${cs.length > 1 ? 's' : ''} · ${Object.entries(tot).map(([c, n]) => qty(n, c)).join(', ')}</span>
-        ${url ? `<a class="btn small" href="${esc(url)}" target="_blank" rel="noopener">🗺 Tournée</a>` : ''}</div>
+        <span class="day-btns"><button type="button" class="small" data-charge="${esc(d)}">📋 Chargement</button>
+        ${url ? `<a class="btn small" href="${esc(url)}" target="_blank" rel="noopener">🗺 Tournée</a>` : ''}</span></div>
       <div class="list">${cs.map(cmdCard).join('')}</div></div>`;
   }).join('') : '<p class="hint">Aucune livraison planifiée.</p>'}
 
@@ -664,6 +800,7 @@ function renderLivraisons() {
 
 function bindLivraisons(root) {
   $('#btn-new-cmd', root).onclick = () => cmdDialog();
+  $$('[data-charge]', root).forEach((b) => b.addEventListener('click', () => chargementDialog(b.dataset.charge)));
   $$('[data-cmd]', root).forEach((el) => el.addEventListener('click', () => cmdDetail(S.cmds.find((c) => c.id === el.dataset.cmd))));
 }
 
@@ -678,9 +815,10 @@ function nextNumero() {
 }
 
 function ligneRow(li = {}) {
-  return `<div class="ligne">${productFields(li)}
+  const p = li.essence ? li : (S.settings.produits[0] || {});
+  return `<div class="ligne">${productSelect(p)}
     <div class="ligne-q"><label>Quantité<input class="f-q" inputmode="decimal" required value="${li.quantite ?? ''}" placeholder="0"></label>
-    <span class="u">${esc(unite(li.contenant || S.settings.contenants[0]?.nom))}</span>
+    <span class="u">${esc(unite(p.contenant))}</span>
     <button type="button" class="danger small" data-rm aria-label="Retirer la ligne">Retirer</button></div></div>`;
 }
 
@@ -711,13 +849,12 @@ function cmdDialog(cmd) {
   const box = $('#lignes', form);
   const bindRow = (row) => {
     $('[data-rm]', row).onclick = () => { if ($$('.ligne', box).length > 1) row.remove(); else toast('Il faut au moins une ligne'); };
-    $('.f-contenant', row).onchange = (e) => { $('.u', row).textContent = unite(e.target.value); };
+    $('.f-produit', row).onchange = (e) => { $('.u', row).textContent = unite(parseKey(e.target.value).contenant); };
   };
   $$('.ligne', box).forEach(bindRow);
   $('#add-ligne', form).onclick = () => {
     const prev = $$('.ligne', box).pop();
-    const p = prev ? { essence: $('.f-essence', prev).value, longueur: $('.f-longueur', prev).value, contenant: $('.f-contenant', prev).value } : {};
-    box.insertAdjacentHTML('beforeend', ligneRow(p));
+    box.insertAdjacentHTML('beforeend', ligneRow(prev ? parseKey($('.f-produit', prev).value) : {}));
     bindRow(box.lastElementChild);
   };
   form.nom.addEventListener('change', () => {
@@ -730,8 +867,7 @@ function cmdDialog(cmd) {
 
   onSubmit(form, async (f) => {
     const lignes = $$('.ligne', box).map((row) => ({
-      essence: $('.f-essence', row).value, longueur: $('.f-longueur', row).value, contenant: $('.f-contenant', row).value,
-      quantite: round(num($('.f-q', row).value)),
+      ...parseKey($('.f-produit', row).value), quantite: round(num($('.f-q', row).value)),
     })).filter((li) => li.quantite > 0);
     if (!lignes.length) { toast('Indiquez la quantité commandée'); return; }
     c.client = { nom: f.nom.trim(), tel: f.tel.trim(), adresse: f.adresse.trim(), acces: f.acces.trim() };
@@ -765,8 +901,9 @@ function cmdDetail(c) {
       </div>
     </div>
     <table class="sum"><thead><tr><th>Bois</th><th>Quantité</th></tr></thead><tbody>
-      ${c.lignes.map((li) => `<tr><td>${esc(plabel(li))}</td><td class="n">${qty(num(li.quantite), li.contenant)}</td></tr>`).join('')}
+      ${c.lignes.map((li) => `<tr><td>${esc(plabel(li))}</td><td class="n">${qty(num(li.quantite), li.contenant)}${fmtSt(num(li.quantite), li.contenant)}</td></tr>`).join('')}
     </tbody></table>
+    ${enCours ? `<p class="tiny">${c.lignes.map((li) => partsText(allocate(pkey(li), num(li.quantite)), li)).join('<br>')}</p>` : ''}
     ${c.prix ? `<p>Prix : <b>${fmtCHF(c.prix)}</b></p>` : ''}
     ${c.note ? `<p class="muted">${esc(c.note)}</p>` : ''}
     ${c.livraison ? `<h3>Livraison du ${fmtDate(c.livraison.date)}</h3>
@@ -805,7 +942,7 @@ async function annulerLivraison(c) {
     const m = S.mvts.find((x) => x.id === id);
     if (!m) continue;
     const lot = S.lots.find((l) => l.id === m.lotId);
-    if (lot) { lot.quantite = round(lot.quantite - m.delta); await saveLot(lot); }
+    if (lot) { lot.quantite = round(lot.quantite - m.delta); await saveLot(lot); await ensureCourant(pkey(lot), { announce: false }); }
     await delMvt(m);
   }
   delete c.livraison;
@@ -813,19 +950,57 @@ async function annulerLivraison(c) {
   await saveCmd(c);
 }
 
+function partsText({ parts, manque }, li) {
+  const u = unite(li.contenant);
+  const txt = parts.map((pt, i) => `${i ? 'puis ' : '👉 '}<b>${esc(lieuNom(pt.lot.lieu))}</b> : ${fmtQ(pt.q)} ${esc(u)}${pt.lot.role === 'prendre' ? ' (zone en cours)' : ' <span class="alert-txt">(réserve à entamer)</span>'}`);
+  if (manque) txt.push(`<span class="alert-txt">⚠ manque ${fmtQ(manque)} ${esc(u)}</span>`);
+  return `${esc(li.essence)} ${esc(li.longueur)} ${esc(li.contenant)} : ${txt.join(', ') || '<span class="alert-txt">aucun stock</span>'}`;
+}
+
+// Liste de chargement d'un jour : quoi prendre dans quelle zone.
+function chargementDialog(date) {
+  const cmds = S.cmds.filter((c) => c.statut === 'planifiee' && c.datePrevue === date).sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+  const used = new Map();
+  const zones = new Map();
+  const manques = [];
+  for (const c of cmds) {
+    for (const li of c.lignes) {
+      const { parts, manque } = allocate(pkey(li), num(li.quantite), used);
+      for (const pt of parts) {
+        if (!zones.has(pt.lot.lieu)) zones.set(pt.lot.lieu, new Map());
+        const z = zones.get(pt.lot.lieu);
+        const k = pkey(li);
+        if (!z.has(k)) z.set(k, { li, q: 0, clients: [], reserve: pt.lot.role !== 'prendre' });
+        const e = z.get(k);
+        e.q += pt.q;
+        e.clients.push(`${c.client?.nom || '?'} ${fmtQ(pt.q)}`);
+      }
+      if (manque) manques.push(`${qty(manque, li.contenant)} ${plabel(li)} (${c.client?.nom || ''})`);
+    }
+  }
+  const zs = [...zones.entries()].sort((a, b) => zoneIndex(a[0]) - zoneIndex(b[0]));
+  openDlg(`Chargement du ${fmtDate(date, { weekday: 'short', day: 'numeric', month: 'short' })}`, `
+    ${zs.map(([z, items]) => `<div class="box"><h3 class="m0">📍 ${esc(lieuNom(z))}</h3>
+      <ul class="plain">${[...items.values()].map((e) => `<li><b>${qty(e.q, e.li.contenant)}</b> ${esc(plabel(e.li))}${e.reserve ? ' <span class="alert-txt">(réserve à entamer)</span>' : ''}<br><small class="muted">${esc(e.clients.join(' · '))}</small></li>`).join('')}</ul></div>`).join('') || '<p class="hint">Rien à charger.</p>'}
+    ${manques.length ? `<p class="alert">⚠ Stock insuffisant : ${manques.map(esc).join(' ; ')}</p>` : ''}
+    <p class="hint">Calculé d’après les zones « à prendre ». Quand une zone est vide, on continue sur la réserve suivante.</p>`,
+  '<span class="spacer"></span><button type="button" class="primary" data-close>OK</button>');
+}
+
 function livrerDialog(c) {
   const lotOpts = (li) => {
-    const ok = lotsCompatibles(li).sort((a, b) => (a.etat === 'sec' ? 0 : 1) - (b.etat === 'sec' ? 0 : 1) || (a.dateMise || '').localeCompare(b.dateMise || ''));
-    return ok.map((l) => `<option value="${esc(l.id)}">${esc(lieuNom(l.lieu))} · ${esc(ETATS[l.etat])} · ${qty(l.quantite, l.contenant)}</option>`).join('')
+    const ls = ordreReserve(lotsCompatibles(li));
+    return '<option value="auto">Automatique – zone en cours</option>'
+      + ls.map((l) => `<option value="${esc(l.id)}">${esc(lieuNom(l.lieu))} · ${l.role === 'prendre' ? 'en cours' : 'réserve'} · ${qty(l.quantite, l.contenant)}</option>`).join('')
       + '<option value="">— ne pas retirer du stock —</option>';
   };
   const form = openDlg(`Livraison n° ${c.numero}`, `
     <label>Date de livraison<input type="date" name="date" required value="${today()}"></label>
-    <h3>Prendre le bois dans quel lot ?</h3>
+    <h3>Où prendre le bois</h3>
     ${c.lignes.map((li, i) => `<div class="box">
       <b>${qty(num(li.quantite), li.contenant)}</b> ${esc(plabel(li))}
-      <label>Lot<select name="lot${i}">${lotOpts(li)}</select></label>
-      ${lotsCompatibles(li).length ? '' : '<p class="alert">Aucun lot en stock pour ce produit.</p>'}
+      <label>Prendre dans<select name="lot${i}" class="f-lot">${lotOpts(li)}</select></label>
+      <p class="tiny" id="prev${i}"></p>
     </div>`).join('')}
     <h3>Photo du bois déchargé</h3>
     <div class="photos" id="pe"></div>
@@ -837,27 +1012,42 @@ function livrerDialog(c) {
   const pad = signaturePad($('#sig', form));
   $('#sig-clear', form).onclick = () => pad.clear();
 
+  const plan = () => {
+    const used = new Map();
+    return c.lignes.map((li, i) => {
+      const choix = form[`lot${i}`].value;
+      if (!choix) return { parts: [], manque: 0, aucun: true };
+      return allocate(pkey(li), num(li.quantite), used, choix === 'auto' ? null : choix);
+    });
+  };
+  const preview = () => plan().forEach((r, i) => {
+    $(`#prev${i}`, form).innerHTML = r.aucun ? '<span class="muted">Le stock ne sera pas modifié.</span>' : partsText(r, c.lignes[i]);
+  });
+  $$('.f-lot', form).forEach((sel) => sel.addEventListener('change', preview));
+  preview();
+
   onSubmit(form, async (f) => {
-    // Vérifie que chaque lot contient assez de bois.
-    const besoin = new Map();
-    c.lignes.forEach((li, i) => { const id = f[`lot${i}`]; if (id) besoin.set(id, (besoin.get(id) || 0) + num(li.quantite)); });
-    for (const [id, q] of besoin) {
-      const lot = S.lots.find((l) => l.id === id);
-      if (!lot || lot.quantite + 1e-9 < q) {
-        toast(`Stock insuffisant dans le lot choisi (${lot ? qty(lot.quantite, lot.contenant) : '0'}). Corrigez le stock ou choisissez « ne pas retirer ».`, 5000);
-        return;
+    const allocs = plan();
+    const manque = allocs.reduce((n, r) => n + r.manque, 0);
+    if (manque && !confirm('Le stock enregistré ne suffit pas pour cette livraison.\nEnregistrer quand même ? (on retire ce qui est en stock)')) return;
+    const mvtIds = [];
+    const keys = new Set();
+    for (let i = 0; i < c.lignes.length; i++) {
+      for (const pt of allocs[i].parts) {
+        const lot = pt.lot;
+        lot.quantite = Math.max(0, round(lot.quantite - pt.q));
+        if (lot.quantite > 0) lot.entame = true;
+        await saveLot(lot);
+        keys.add(pkey(lot));
+        const m = await saveMvt({ type: 'livraison', date: f.date, lotId: lot.id, delta: -pt.q, commandeId: c.id, client: c.client?.nom, note: `Commande n° ${c.numero}`, ...snap(lot) });
+        mvtIds.push(m.id);
       }
     }
-    const mvtIds = [];
-    for (let i = 0; i < c.lignes.length; i++) {
-      const id = f[`lot${i}`];
-      if (!id) continue;
-      const li = c.lignes[i];
-      const lot = S.lots.find((l) => l.id === id);
-      lot.quantite = Math.max(0, round(lot.quantite - num(li.quantite)));
-      await saveLot(lot);
-      const m = await saveMvt({ type: 'livraison', date: f.date, lotId: lot.id, delta: -num(li.quantite), commandeId: c.id, client: c.client?.nom, note: `Commande n° ${c.numero}`, ...snap(lot) });
-      mvtIds.push(m.id);
+    // Une réserve entamée devient la zone en cours.
+    for (const k of keys) {
+      const ent = S.lots.find((l) => pkey(l) === k && l.entame && l.quantite > 0 && l.role !== 'prendre');
+      if (ent && !lotCourant(k)) await setCourant(ent);
+      await ensureCourant(k);
     }
     c.livraison = { date: f.date, mvtIds, photos: [...photos], signature: pad.dataURL(), signataire: f.signataire.trim() };
     c.statut = 'livree';
@@ -919,6 +1109,150 @@ async function printBon(c) {
   window.print();
 }
 
+// ---------------------------------------------------------------- Vue : Place (plan et zones)
+
+function zoneLots(id) { return S.lots.filter((l) => l.lieu === id && l.quantite > 0); }
+
+function zoneStatus(id) {
+  const ls = zoneLots(id);
+  if (ls.some((l) => l.role === 'prendre')) return 'prendre';
+  if (ls.some((l) => l.etat === 'sec')) return 'reserve';
+  if (ls.length) return 'sechage';
+  return 'vide';
+}
+
+const shortProd = (l) => `${l.essence} ${l.longueur.replace(/\s?cm/, '')} ${({ 'Big-bag': 'BB', Ballot: 'ballot', Caisse: 'caisse' })[l.contenant] || l.contenant}`;
+
+function zoneResume(id) {
+  const m = new Map();
+  for (const l of zoneLots(id)) m.set(shortProd(l), (m.get(shortProd(l)) || 0) + l.quantite);
+  return [...m].map(([k, q]) => `${k} : ${fmtQ(q)}`);
+}
+
+function renderPlace() {
+  const s = S.settings;
+  const zones = s.lieux;
+  const placing = S.placing && zones.find((z) => z.id === S.placing);
+  return `
+  <section class="card">
+    <div class="row between"><h2>Plan de la place</h2>
+      <label class="btn small">📷 ${s.plan ? 'Changer le plan' : 'Ajouter un plan'}<input type="file" accept="image/*" id="plan-file" hidden></label></div>
+    ${s.plan ? `
+      ${placing ? `<p class="placing-bar">Touchez le plan à l’endroit de « <b>${esc(placing.nom)}</b> » <button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
+      <div class="plan ${placing ? 'placing' : ''}" id="plan"><img data-photo="${esc(s.plan)}" alt="Plan de la place">
+        ${zones.filter((z) => z.x != null).map((z) => `<button type="button" class="zmark ${zoneStatus(z.id)}" data-zone="${esc(z.id)}" style="left:${z.x}%;top:${z.y}%"><b>${esc(z.nom)}</b>${zoneResume(z.id).slice(0, 3).map((t) => `<small>${esc(t)}</small>`).join('')}</button>`).join('')}
+      </div>
+      <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>`
+    : `<p class="hint">Ajoutez une image de la place du triage : photo prise d’en haut, capture de la photo aérienne sur map.geo.admin.ch, ou photo d’un croquis dessiné à la main. Vous placerez ensuite les zones dessus.</p>`}
+  </section>
+
+  <button class="primary big" id="btn-new-zone">+ Nouvelle zone</button>
+
+  ${zones.map((z) => {
+    const ls = S.lots.filter((l) => l.lieu === z.id && (l.quantite > 0 || S.showEmpty)).sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr'));
+    return `<section class="card zone-card" id="zone-${esc(z.id)}">
+      <div class="row between"><h2><i class="dot ${zoneStatus(z.id)}"></i> ${esc(z.nom)}</h2>
+        <button type="button" class="small" data-zone-edit="${esc(z.id)}">Modifier</button></div>
+      ${z.note ? `<p class="hint">${esc(z.note)}</p>` : ''}
+      <div class="lots">${ls.map(lotCard).join('') || '<p class="hint">Zone vide.</p>'}</div>
+      <button type="button" class="small mt" data-zone-add="${esc(z.id)}">+ Lot dans cette zone</button>
+    </section>`;
+  }).join('')}`;
+}
+
+function bindPlace(root) {
+  $('#plan-file', root).onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    toast('Enregistrement du plan…');
+    S.settings.plan = await storePhoto(f);
+    await saveSettings();
+    cleanPhotos(usedPhotos());
+    render();
+  };
+  const cancel = $('#cancel-place', root);
+  if (cancel) cancel.onclick = () => { S.placing = null; render(); };
+  const plan = $('#plan', root);
+  if (plan) {
+    plan.addEventListener('click', async (e) => {
+      if (S.placing) {
+        const r = $('img', plan).getBoundingClientRect();
+        const z = S.settings.lieux.find((x) => x.id === S.placing);
+        z.x = Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)) * 10) / 10;
+        z.y = Math.round(Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)) * 10) / 10;
+        S.placing = null;
+        await saveSettings();
+        render();
+        return;
+      }
+      const m = e.target.closest('[data-zone]');
+      if (m) {
+        const card = $(`#zone-${CSS.escape(m.dataset.zone)}`, root);
+        card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        card?.classList.add('flash');
+        setTimeout(() => card?.classList.remove('flash'), 1200);
+      }
+    });
+  }
+  $('#btn-new-zone', root).onclick = () => zoneDialog();
+  $$('[data-zone-edit]', root).forEach((b) => b.addEventListener('click', () => zoneDialog(S.settings.lieux.find((z) => z.id === b.dataset.zoneEdit))));
+  $$('[data-zone-add]', root).forEach((b) => b.addEventListener('click', () => lotDialog(null, { lieu: b.dataset.zoneAdd })));
+  bindLots(root);
+}
+
+function zoneDialog(zone) {
+  const isNew = !zone;
+  const zones = S.settings.lieux;
+  const z = zone || { id: uid(), nom: `Zone ${String.fromCharCode(65 + zones.length % 26)}` };
+  const i = zones.indexOf(zone);
+  const form = openDlg(isNew ? 'Nouvelle zone' : `Zone ${z.nom}`, `
+    <label>Nom de la zone<input name="nom" required value="${esc(z.nom)}" placeholder="ex. Zone A, Couvert nord…"></label>
+    <label>Remarque<input name="note" value="${esc(z.note || '')}" placeholder="ex. le long du hangar, accès camion"></label>
+    ${isNew ? '' : `<div class="row">
+      ${S.settings.plan ? '<button type="button" id="z-place">📍 Placer sur le plan</button>' : ''}
+      <button type="button" id="z-up" ${i <= 0 ? 'disabled' : ''}>▲ Monter</button>
+      <button type="button" id="z-down" ${i >= zones.length - 1 ? 'disabled' : ''}>▼ Descendre</button></div>
+      <p class="hint">L’ordre des zones sert aussi à choisir la prochaine réserve à ouvrir (à âge égal).</p>`}
+  `, `${isNew ? '' : '<button type="button" class="danger" id="z-del">Supprimer</button>'}<span class="spacer"></span>
+      <button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>`);
+  onSubmit(form, async (f) => {
+    z.nom = f.nom.trim();
+    z.note = f.note.trim();
+    if (isNew) zones.push(z);
+    await saveSettings();
+    dlg().close();
+    if (isNew && S.settings.plan) { S.placing = z.id; toast('Touchez maintenant le plan pour placer la zone'); }
+    render();
+  });
+  if (isNew) return;
+  const move = async (d) => {
+    zones.splice(i, 1);
+    zones.splice(i + d, 0, z);
+    await saveSettings();
+    dlg().close();
+    render();
+  };
+  const on = (id, fn) => { const b = $(id, form); if (b) b.onclick = fn; };
+  on('#z-up', () => move(-1));
+  on('#z-down', () => move(1));
+  on('#z-place', () => {
+    S.placing = z.id;
+    dlg().close();
+    render();
+    $('#plan')?.scrollIntoView({ behavior: 'smooth' });
+  });
+  on('#z-del', async () => {
+    if (zoneLots(z.id).length) { toast('Cette zone contient encore du bois : videz ou déplacez les lots d’abord.', 4000); return; }
+    if (zones.length <= 1) { toast('Il faut au moins une zone'); return; }
+    if (!confirm(`Supprimer la zone « ${z.nom} » ?`)) return;
+    zones.splice(zones.indexOf(z), 1);
+    S.lots.filter((l) => l.lieu === z.id).forEach((l) => delLot(l));
+    await saveSettings();
+    dlg().close();
+    render();
+  });
+}
+
 // ---------------------------------------------------------------- Vue : Plus (historique, réglages, sauvegarde)
 
 function renderPlus() {
@@ -942,16 +1276,26 @@ function renderPlus() {
 
   <section class="card">
     <h2>Catalogue</h2>
-    <p class="hint">Un élément par ligne. Renommer un élément ne modifie pas les lots déjà enregistrés.</p>
     <form id="form-cat">
-      <div class="grid2">
-        <label>Essences<textarea name="essences" rows="7">${esc(s.essences.join('\n'))}</textarea></label>
-        <label>Longueurs<textarea name="longueurs" rows="7">${esc(s.longueurs.join('\n'))}</textarea></label>
+      <h3>Produits vendus</h3>
+      <p class="hint">Seuls ces produits sont proposés dans le stock, les entrées et les commandes.</p>
+      <div id="produits"></div>
+      <div class="box">
+        <div class="grid3">
+          <label>Essence<select id="np-e">${options(s.essences, '')}</select></label>
+          <label>Longueur<select id="np-l">${options(s.longueurs, '')}</select></label>
+          <label>Contenant<select id="np-c">${options(s.contenants.map((c) => c.nom), '')}</select></label>
+        </div>
+        <button type="button" id="add-prod">+ Ajouter ce produit</button>
       </div>
-      <label>Contenants <small class="muted">(nom = unité, ex. « Stère = st »)</small><textarea name="contenants" rows="5">${esc(s.contenants.map((c) => `${c.nom} = ${c.unite}`).join('\n'))}</textarea></label>
-      <h3>Lieux de stockage</h3>
-      <div id="lieux">${s.lieux.map((l) => `<div class="row lieu"><input data-id="${esc(l.id)}" value="${esc(l.nom)}"><button type="button" class="danger small" data-rm-lieu>Retirer</button></div>`).join('')}</div>
-      <button type="button" id="add-lieu">+ Ajouter un lieu</button>
+      <h3>Listes</h3>
+      <p class="hint">Un élément par ligne. Enregistrez avant d’ajouter un produit avec une nouvelle essence ou longueur. Renommer ne modifie pas les lots déjà enregistrés.</p>
+      <div class="grid2">
+        <label>Essences<textarea name="essences" rows="6">${esc(s.essences.join('\n'))}</textarea></label>
+        <label>Longueurs<textarea name="longueurs" rows="6">${esc(s.longueurs.join('\n'))}</textarea></label>
+      </div>
+      <label>Contenants <small class="muted">(nom = unité = stères, ex. « Caisse = caisse = 0,7 »)</small><textarea name="contenants" rows="4">${esc(s.contenants.map((c) => `${c.nom} = ${c.unite} = ${String(c.steres ?? '').replace('.', ',')}`).join('\n'))}</textarea></label>
+      <p class="hint">Les zones de stockage se gèrent dans l’onglet <b>Place</b>.</p>
       <label>Entreprises / fournisseurs<textarea name="entreprises" rows="4">${esc(s.entreprises.join('\n'))}</textarea></label>
       <h3>Coordonnées pour le bon de livraison</h3>
       <div class="grid2">
@@ -985,20 +1329,20 @@ function bindPlus(root) {
   $('#btn-backup', root).onclick = backup;
   $('#input-import', root).onchange = (e) => restore(e.target.files[0]);
 
-  const lieux = $('#lieux', root);
-  const bindLieu = (row) => {
-    $('[data-rm-lieu]', row).onclick = () => {
-      const id = $('input', row).dataset.id;
-      if (S.lots.some((l) => l.lieu === id && l.quantite > 0)) { toast('Ce lieu contient encore du bois : déplacez ou videz les lots d’abord.', 4000); return; }
-      if ($$('.lieu', lieux).length <= 1) { toast('Il faut au moins un lieu'); return; }
-      row.remove();
-    };
+  const prods = [...S.settings.produits];
+  const box = $('#produits', root);
+  const drawProds = () => {
+    box.innerHTML = prods.map((p, i) => `<div class="prod-row"><span>${esc(p.essence)} ${esc(p.longueur)} · ${esc(p.contenant)}</span><button type="button" class="danger small" data-rm-prod="${i}">Retirer</button></div>`).join('')
+      || '<p class="hint">Aucun produit.</p>';
+    $$('[data-rm-prod]', box).forEach((bt) => bt.addEventListener('click', () => { prods.splice(+bt.dataset.rmProd, 1); drawProds(); }));
   };
-  $$('.lieu', lieux).forEach(bindLieu);
-  $('#add-lieu', root).onclick = () => {
-    lieux.insertAdjacentHTML('beforeend', `<div class="row lieu"><input data-id="${uid()}" placeholder="ex. Hangar, couvert de …"><button type="button" class="danger small" data-rm-lieu>Retirer</button></div>`);
-    bindLieu(lieux.lastElementChild);
-    $('input', lieux.lastElementChild).focus();
+  drawProds();
+  $('#add-prod', root).onclick = () => {
+    const p = { essence: $('#np-e', root).value, longueur: $('#np-l', root).value, contenant: $('#np-c', root).value };
+    if (prods.some((x) => pkey(x) === pkey(p))) { toast('Ce produit existe déjà'); return; }
+    prods.push(p);
+    drawProds();
+    toast('Produit ajouté – pensez à enregistrer');
   };
 
   $('#form-cat', root).addEventListener('submit', async (e) => {
@@ -1007,10 +1351,9 @@ function bindPlus(root) {
     const lines = (v) => [...new Set(String(v).split('\n').map((x) => x.trim()).filter(Boolean))];
     const s = S.settings;
     const ess = lines(f.essences); const lon = lines(f.longueurs);
-    const con = lines(f.contenants).map((x) => { const [nom, u] = x.split('='); return { nom: nom.trim(), unite: (u || nom).trim() }; });
-    const li = $$('input', lieux).map((i) => ({ id: i.dataset.id, nom: i.value.trim() })).filter((l) => l.nom);
-    if (!ess.length || !lon.length || !con.length || !li.length) { toast('Chaque liste doit contenir au moins un élément'); return; }
-    Object.assign(s, { essences: ess, longueurs: lon, contenants: con, lieux: li, entreprises: lines(f.entreprises) });
+    const con = lines(f.contenants).map((x) => { const [nom, u, st] = x.split('='); return { nom: nom.trim(), unite: (u || nom).trim(), steres: num(st) }; });
+    if (!ess.length || !lon.length || !con.length || !prods.length) { toast('Chaque liste doit contenir au moins un élément'); return; }
+    Object.assign(s, { essences: ess, longueurs: lon, contenants: con, produits: prods, entreprises: lines(f.entreprises) });
     s.triage = { nom: f.t_nom.trim(), tel: f.t_tel.trim(), adresse: f.t_adresse.trim(), email: f.t_email.trim() };
     await saveSettings();
     toast('Catalogue enregistré');
@@ -1040,10 +1383,12 @@ function exportCSV(kind) {
   const nb = (n) => (n === null || n === undefined || n === '' ? '' : String(round(n)).replace('.', ','));
   let rows;
   if (kind === 'stock') {
-    rows = [['Essence', 'Longueur', 'Contenant', 'Quantité', 'Unité', 'État', 'Lieu', 'Mis en tas le', 'Provenance', 'Humidité %', 'Remarque']];
-    for (const l of S.lots) rows.push([l.essence, l.longueur, l.contenant, nb(l.quantite), unite(l.contenant), ETATS[l.etat], lieuNom(l.lieu), l.dateMise, l.provenance, nb(l.humidite), l.note]);
+    rows = [['Essence', 'Longueur', 'Contenant', 'Quantité', 'Unité', 'Stères', 'État', 'Zone', 'Utilisation', 'Mis en tas le', 'Provenance', 'Humidité %', 'Remarque']];
+    for (const l of [...S.lots].sort((a, b) => zoneIndex(a.lieu) - zoneIndex(b.lieu))) {
+      rows.push([l.essence, l.longueur, l.contenant, nb(l.quantite), unite(l.contenant), nb(steres(l.quantite, l.contenant)), ETATS[l.etat], lieuNom(l.lieu), l.role === 'prendre' ? 'À prendre' : 'Réserve', l.dateMise, l.provenance, nb(l.humidite), l.note]);
+    }
   } else if (kind === 'mouvements') {
-    rows = [['Date', 'Type', 'Essence', 'Longueur', 'Contenant', 'Quantité', 'Unité', 'Lieu', 'Entreprise / fournisseur', 'Client', 'Prix CHF', 'Remarque']];
+    rows = [['Date', 'Type', 'Essence', 'Longueur', 'Contenant', 'Quantité', 'Unité', 'Zone', 'Entreprise / fournisseur', 'Client', 'Prix CHF', 'Remarque']];
     for (const m of [...S.mvts].sort((a, b) => a.date.localeCompare(b.date))) rows.push([m.date, TYPES[m.type], m.essence, m.longueur, m.contenant, nb(m.delta), unite(m.contenant), lieuNom(m.lieu), m.entreprise, m.client, nb(m.prix), m.note]);
   } else {
     rows = [['N°', 'Statut', 'Client', 'Téléphone', 'Adresse', 'Date prévue', 'Date livraison', 'Bois', 'Prix CHF', 'Remarque']];
@@ -1075,7 +1420,7 @@ async function restore(file) {
     for (const l of data.lots) await db.put('lots', l);
     for (const m of data.mouvements) await db.put('mouvements', m);
     for (const c of data.commandes) await db.put('commandes', c);
-    await db.put('kv', { key: 'settings', value: { ...structuredClone(DEFAULT_SETTINGS), ...data.settings } });
+    await db.put('kv', { key: 'settings', value: data.settings });
     await load();
     toast('Copie récupérée');
     render();
@@ -1088,6 +1433,7 @@ async function restore(file) {
 
 const VIEWS = {
   stock: { title: 'Stock', render: renderStock, bind: bindStock },
+  place: { title: 'Place et zones', render: renderPlace, bind: bindPlace },
   entrees: { title: 'Entrées de bois', render: renderEntrees, bind: bindEntrees },
   livraisons: { title: 'Commandes & livraisons', render: renderLivraisons, bind: bindLivraisons },
   plus: { title: 'Historique & réglages', render: renderPlus, bind: bindPlus },
@@ -1120,7 +1466,11 @@ function go(view) {
 async function load() {
   const kv = await db.get('kv', 'settings');
   S.settings = { ...structuredClone(DEFAULT_SETTINGS), ...(kv?.value || {}) };
-  if (!kv) await saveSettings();
+  if ((S.settings.version || 1) < SETTINGS_VERSION) {
+    // Ancien catalogue : remplacé par les produits du triage. Les lieux deviennent des zones.
+    Object.assign(S.settings, DEFAULT_CATALOGUE(), { version: SETTINGS_VERSION });
+  }
+  if (!kv || kv.value.version !== S.settings.version) await saveSettings();
   [S.lots, S.mvts, S.cmds] = await Promise.all([db.all('lots'), db.all('mouvements'), db.all('commandes')]);
 }
 
