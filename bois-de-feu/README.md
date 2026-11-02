@@ -9,12 +9,13 @@ Adresse : https://mactimber.github.io/Projet-mac/bois-de-feu/
 | Essence | Longueurs | Contenants |
 |---|---|---|
 | Foyard | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag ; 33 et 25 cm aussi en caisse |
-| Mélèze, Épicéa | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag |
+| Mélèze | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag |
+| Épicéa | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag |
 | Frêne | 1 m, 33 cm | ballot / big-bag |
 | Feuillus indigènes | 33 cm | big-bag |
 | Bouleau | 50 cm | big-bag |
 
-Équivalences : big-bag = 1 stère, caisse = 0,7 stère, ballot = 1 stère (à vérifier). Tout se modifie dans **Plus → Catalogue**.
+Équivalences : big-bag = 1 stère, caisse = 0,7 stère, ballot = 1 stère. Tout se modifie dans **Plus → Catalogue**.
 
 ## Les 5 onglets
 1. **Stock** : un résumé par produit avec le total en stères, ce qui reste après les commandes à livrer,
