@@ -24,8 +24,8 @@ export async function compress(file, max = 1600, quality = 0.75) {
   return new Promise((resolve) => c.toBlob((b) => resolve(b || file), 'image/jpeg', quality));
 }
 
-export async function storePhoto(file) {
-  const blob = await compress(file);
+export async function storePhoto(file, max = 1600, quality = 0.75) {
+  const blob = await compress(file, max, quality);
   const id = uid();
   await db.put('photos', { id, blob, created: new Date().toISOString() });
   return id;

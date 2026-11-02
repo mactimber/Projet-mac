@@ -206,6 +206,7 @@ function usedPhotos() {
   const used = new Set();
   for (const o of [...S.lots, ...S.mvts, ...S.cmds]) for (const id of o.photos || []) used.add(id);
   for (const c of S.cmds) for (const id of c.livraison?.photos || []) used.add(id);
+  if (S.settings?.fond?.photo) used.add(S.settings.fond.photo);
   return used;
 }
 
@@ -1324,6 +1325,14 @@ function renderPlace() {
     <div id="zmap" class="zmap ${drawing || placing ? 'placing' : ''}"></div>
     <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>
     ${sansContour.length && !drawing && !placing ? `<p class="hint">Pas encore placée${sansContour.length > 1 ? 's' : ''} sur la carte : ${sansContour.map((z) => `<button type="button" class="link" data-zone-edit="${esc(z.id)}">${esc(z.nom)}</button>`).join(', ')}</p>` : ''}
+    <details class="backup"${S.settings.fond ? '' : ' open'}><summary>Mon propre fond de plan (image retouchée)</summary>
+      <ol class="hint steps-list">
+        <li>Cadrez la carte sur la place (toute la zone utile visible), puis :<br><button type="button" class="small" id="btn-fond-export">⬇ Télécharger la vue (photo aérienne)</button></li>
+        <li>Faites retirer les anciens tas par une IA (<b>sans recadrer ni changer les proportions</b> de l’image).</li>
+        <li><label class="btn small">⬆ Importer l’image retouchée<input type="file" accept="image/*" id="fond-file" hidden></label></li>
+      </ol>
+      ${S.settings.fond ? `<div class="row"><label class="grow">Visibilité<input type="range" id="fond-op" min="0.2" max="1" step="0.05" value="${S.settings.fond.opacite ?? 1}"></label><button type="button" class="small danger" id="btn-fond-del">Retirer mon fond</button></div>` : ''}
+    </details>
     <details class="backup"><summary>Carte sans réseau</summary>
       <p class="hint">Centrez la carte sur le secteur, puis enregistrez-la : elle restera disponible sans réseau.</p>
       <button type="button" id="btn-offline">⬇ Enregistrer cette partie de la carte</button>
@@ -1393,14 +1402,21 @@ function bindPlace(root) {
     cadastre(),
   ]);
   const bases = { plan, pale, photo, carte };
+  fondLayer = null;
+  if (S.settings.fond) {
+    const f = S.settings.fond;
+    fondLayer = L.imageOverlay('', f.bounds, { opacity: f.opacite ?? 1, interactive: false });
+    photoURL(f.photo).then((u) => fondLayer && fondLayer.setUrl(u));
+    bases.mien = L.layerGroup([fondLayer, cadastre()]);
+  }
   const setFond = (id) => {
     S.base = id;
     try { localStorage.setItem('bf-base', id); } catch { /* stockage indisponible */ }
-    map.getContainer().classList.toggle('fond-blanc', id === 'plan' || id === 'pale');
+    map.getContainer().classList.toggle('fond-blanc', id === 'plan' || id === 'pale' || id === 'mien');
   };
   (bases[S.base] || plan).addTo(map);
   setFond(bases[S.base] ? S.base : 'plan');
-  L.control.layers({ 'Plan vide (bâtiments)': plan, 'Photo pâle': pale, 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
+  L.control.layers({ ...(bases.mien ? { 'Mon fond de plan': bases.mien } : {}), 'Plan vide (bâtiments)': plan, 'Photo pâle': pale, 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
   map.on('baselayerchange', (e) => setFond(Object.keys(bases).find((k) => bases[k] === e.layer) || 'plan'));
   map.pm.setLang('fr');
 
@@ -1525,6 +1541,24 @@ function bindPlace(root) {
     $('#zmap').scrollIntoView({ behavior: 'smooth' });
   }));
   $('#btn-offline', root).onclick = saveOfflineTiles;
+  $('#btn-fond-export', root).onclick = exportVue;
+  $('#fond-file', root).onchange = (e) => importFond(e.target.files[0]);
+  const op = $('#fond-op', root);
+  if (op) {
+    op.oninput = () => { S.settings.fond.opacite = Number(op.value); fondLayer?.setOpacity(Number(op.value)); };
+    op.onchange = () => saveSettings();
+  }
+  const del = $('#btn-fond-del', root);
+  if (del) {
+    del.onclick = async () => {
+      if (!confirm('Retirer votre fond de plan ?')) return;
+      S.settings.fond = null;
+      if (S.base === 'mien') S.base = 'plan';
+      await saveSettings();
+      cleanPhotos(usedPhotos());
+      render();
+    };
+  }
   $('#btn-new-zone', root).onclick = () => zoneDialog();
   $$('[data-zone-edit]', root).forEach((b) => b.addEventListener('click', () => zoneDialog(zones.find((z) => z.id === b.dataset.zoneEdit))));
   $$('[data-zone-add]', root).forEach((b) => b.addEventListener('click', () => lotDialog(null, { lieu: b.dataset.zoneAdd })));
@@ -1542,6 +1576,80 @@ function startMode(mode, id, focusRing) {
   if (focusRing) S.focusRing = focusRing;
   render();
   $('#zmap')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+let fondLayer = null;
+
+// Télécharge la photo aérienne de la vue actuelle en haute définition et mémorise son emplacement exact.
+async function exportVue() {
+  if (!map) return;
+  const b = map.getBounds();
+  const taille = (z) => {
+    const a = map.project(b.getNorthWest(), z).round();
+    const c = map.project(b.getSouthEast(), z).round();
+    return { a, c, w: c.x - a.x, h: c.y - a.y };
+  };
+  let z = 20;
+  while (z > 14 && Math.max(taille(z).w, taille(z).h) > 4096) z--;
+  const { a, c, w, h } = taille(z);
+  toast('Préparation de l’image…', 4000);
+  const cv = document.createElement('canvas');
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
+  const jobs = [];
+  for (let tx = Math.floor(a.x / 256); tx <= Math.floor((c.x - 1) / 256); tx++) {
+    for (let ty = Math.floor(a.y / 256); ty <= Math.floor((c.y - 1) / 256); ty++) {
+      const url = wmts('ch.swisstopo.swissimage').replace('{z}', z).replace('{x}', tx).replace('{y}', ty);
+      jobs.push(new Promise((res) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => { ctx.drawImage(img, tx * 256 - a.x, ty * 256 - a.y); res(true); };
+        img.onerror = () => res(false);
+        img.src = url;
+      }));
+    }
+  }
+  const ok = (await Promise.all(jobs)).filter(Boolean).length;
+  if (!ok) { toast('Photo aérienne inaccessible (pas de réseau ?)', 4000); return; }
+  const nw = map.unproject(a, z);
+  const se = map.unproject(c, z);
+  S.settings.fondExport = { bounds: [[se.lat, nw.lng], [nw.lat, se.lng]], w, h, date: nowISO() };
+  await saveSettings();
+  cv.toBlob((blob) => {
+    download(`place-triage_${today()}.jpg`, blob);
+    toast(`Image téléchargée (${w} × ${h} px). Retouchez-la sans la recadrer, puis importez-la.`, 6000);
+  }, 'image/jpeg', 0.92);
+}
+
+async function importFond(file) {
+  if (!file) return;
+  const ex = S.settings.fondExport;
+  let bounds = ex?.bounds;
+  if (!bounds) {
+    const b = map.getBounds();
+    bounds = [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]];
+    toast('Image placée sur la vue actuelle (pas de vue téléchargée avant).', 5000);
+  }
+  toast('Enregistrement de l’image…');
+  const id = await storePhoto(file, 4096, 0.85);
+  if (ex) {
+    // Vérifie que les proportions n'ont pas changé.
+    const u = await photoURL(id);
+    const img = await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = u; });
+    if (img && Math.abs(img.naturalWidth / img.naturalHeight - ex.w / ex.h) > 0.03) {
+      toast('Attention : l’image n’a plus les mêmes proportions, elle sera un peu déformée.', 6000);
+    }
+  }
+  S.settings.fond = { photo: id, bounds, opacite: 1 };
+  S.base = 'mien';
+  try { localStorage.setItem('bf-base', 'mien'); } catch { /* */ }
+  await saveSettings();
+  cleanPhotos(usedPhotos());
+  toast('Votre fond de plan est en place');
+  render();
 }
 
 async function saveOfflineTiles() {
