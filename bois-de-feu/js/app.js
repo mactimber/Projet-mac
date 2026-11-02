@@ -1245,8 +1245,55 @@ function occupation(z) {
 function gridApres(g, ref, ou, ecart) {
   const rg = ref.grid;
   const { L, D } = gridSize(rg);
-  const pos = ou === 'derriere' ? gridPos(rg, 0, D + ecart) : ou === 'devant' ? gridPos(rg, 0, -ecart - gridSize({ ...g, angle: rg.angle }).D) : gridPos(rg, L + ecart, 0);
+  const n = gridSize(g);
+  const pos = {
+    derriere: () => gridPos(rg, 0, D + ecart),
+    devant: () => gridPos(rg, 0, -ecart - n.D),
+    avant: () => gridPos(rg, -ecart - n.L, 0),
+    apres: () => gridPos(rg, L + ecart, 0),
+  }[ou]();
   return { ...g, origin: fixLL(pos), angle: rg.angle, side: rg.side || 1 };
+}
+
+const distM = (a, b) => Math.hypot((b[1] - a[1]) * M_LAT * Math.cos(a[0] * Math.PI / 180), (b[0] - a[0]) * M_LAT);
+const gridCentre = (g) => { const { L, D } = gridSize(g); return gridPos(g, L / 2, D / 2); };
+
+// Place une zone en rangées avec son centre au point donné.
+function gridAuCentre(g, c) {
+  const { L, D } = gridSize(g);
+  const tmp = { ...g, origin: c };
+  const c0 = gridPos(tmp, L / 2, D / 2);
+  return { ...g, origin: fixLL(offsetLL(c, (c[1] - c0[1]) * M_LAT * Math.cos(c[0] * Math.PI / 180), (c[0] - c0[0]) * M_LAT)) };
+}
+
+// Aimant : colle la zone à une zone voisine (même alignement, espace habituel) si elle en est proche.
+function aimanter(z) {
+  const ecart = S.settings.ecartZones ?? 0.5;
+  const c = gridCentre(z.grid);
+  const { L, D } = gridSize(z.grid);
+  const seuil = Math.max(3, Math.max(L, D) / 2);
+  let best = null;
+  for (const o of S.settings.lieux) {
+    if (o.id === z.id || !o.grid?.origin) continue;
+    for (const ou of ['apres', 'avant', 'derriere', 'devant']) {
+      const cand = gridApres(z.grid, o, ou, ecart);
+      const d = distM(c, gridCentre(cand));
+      if (d < seuil && (!best || d < best.d)) best = { d, cand, o };
+    }
+  }
+  if (best) z.grid = best.cand;
+  return best?.o || null;
+}
+
+// Zone voisine la plus proche (pour reprendre son alignement).
+function zoneProche(p, exceptId) {
+  let best = null;
+  for (const o of S.settings.lieux) {
+    if (o.id === exceptId || !o.grid?.origin) continue;
+    const d = distM(p, gridCentre(o.grid));
+    if (!best || d < best.d) best = { d, o };
+  }
+  return best?.o || null;
 }
 
 // ---------------------------------------------------------------- Vue : carte et zones
@@ -1265,15 +1312,14 @@ function renderPlace() {
       <span class="row"><button type="button" class="small" id="btn-gps">◎ Ma position</button><button type="button" class="small" id="btn-fit">⤢ Tout voir</button></span></div>
     ${drawing ? `<p class="placing-bar"><span>Dessin de « <b>${esc(drawing.nom)}</b> » : touchez chaque coin, puis le premier point pour fermer.</span><button type="button" class="small" id="cancel-draw">Annuler</button></p>` : ''}
     ${editing ? `<p class="placing-bar"><span>Glissez les points de « <b>${esc(editing.nom)}</b> » pour corriger le contour.</span><button type="button" class="small primary" id="end-edit">Terminer</button></p>` : ''}
-    ${placing ? `<p class="placing-bar"><span id="placing-txt">« <b>${esc(placing.nom)}</b> » : touchez le <b>coin de départ</b> de la première ligne.</span><button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
+    ${placing ? `<p class="placing-bar"><span>« <b>${esc(placing.nom)}</b> » : <b>touchez la carte</b> à l’endroit de la zone.</span><button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
     ${adjusting ? `<div class="adjust-bar">
-        <div class="row between"><span>Ajuster « <b>${esc(adjusting.nom)}</b> »</span><button type="button" class="small primary" id="adj-end">✓ Terminer</button></div>
-        <div class="adj-grid">
-          <button type="button" data-adj="rotl" title="Tourner à gauche">⟲</button><button type="button" data-adj="n">▲</button><button type="button" data-adj="rotr" title="Tourner à droite">⟳</button>
-          <button type="button" data-adj="w">◀</button><button type="button" id="adj-pas">${pas < 1 ? `${pas * 100} cm` : '1 m'}</button><button type="button" data-adj="e">▶</button>
-          <button type="button" data-adj="flip" title="Lignes de l’autre côté">⇅ côté</button><button type="button" data-adj="s">▼</button><span></span>
+        <p class="m0"><b>${esc(adjusting.nom)}</b> : glissez la zone avec le doigt. Près d’une autre zone, elle s’y colle toute seule (${fmtQ(S.settings.ecartZones ?? 0.5)} m d’espace).</p>
+        <div class="row mt">
+          <button type="button" data-rot="-5">⟲ 5°</button><button type="button" data-rot="-1">⟲ 1°</button>
+          <button type="button" data-rot="1">1° ⟳</button><button type="button" data-rot="5">5° ⟳</button>
+          <span class="spacer"></span><button type="button" class="primary" id="adj-end">✓ Terminer</button>
         </div>
-        <p class="hint m0">Flèches : déplacer de ${pas < 1 ? `${pas * 100} cm` : '1 m'} (toucher le pas pour le changer). ⟲ ⟳ : tourner de ${pas < 0.5 ? '0,5' : pas < 1 ? '2' : '5'}°.</p>
       </div>` : ''}
     <div id="zmap" class="zmap ${drawing || placing ? 'placing' : ''}"></div>
     <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>
@@ -1331,6 +1377,7 @@ function bindPlace(root) {
   const zones = S.settings.lieux;
   unitLayers = {};
   map = L.map($('#zmap', root), { maxZoom: 22, minZoom: 8, zoomControl: true });
+  window.bfMap = map; // accès pour le diagnostic
   map.attributionControl.setPrefix(false);
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
   const photo = L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
@@ -1399,63 +1446,53 @@ function bindPlace(root) {
       render();
     };
   }
-  // Placement d'une zone en rangées : coin de départ puis direction de la ligne
+  // Placement d'une zone en rangées : un toucher = centre de la zone
   if (S.placingGrid) {
     const z = zones.find((x) => x.id === S.placingGrid);
-    let a = null;
-    let mk = null;
-    let guide = null;
     map.on('click', async (e) => {
       const p = [e.latlng.lat, e.latlng.lng];
-      if (!a) {
-        a = p;
-        mk = L.circleMarker(e.latlng, { radius: 7, color: '#000', weight: 2, fillColor: '#ffeb3b', fillOpacity: 1 }).addTo(map);
-        $('#placing-txt', root).innerHTML = `« <b>${esc(z.nom)}</b> » : touchez maintenant un <b>2ᵉ point dans l’alignement</b> de la ligne (plus il est loin, plus c’est précis).`;
-        map.on('mousemove', (ev) => {
-          if (guide) map.removeLayer(guide);
-          guide = L.polyline([e.latlng, ev.latlng], { color: '#ffeb3b', dashArray: '6 6', weight: 3, interactive: false }).addTo(map);
-        });
-        return;
-      }
-      if (Math.abs(p[0] - a[0]) + Math.abs(p[1] - a[1]) < 1e-7) return;
-      map.off('mousemove');
-      if (mk) map.removeLayer(mk);
-      if (guide) map.removeLayer(guide);
-      z.grid = { ...z.grid, origin: fixLL(a), angle: Math.round(bearing(a, p) * 10) / 10, side: z.grid.side || 1 };
+      const voisine = zoneProche(p, z.id);
+      z.grid = gridAuCentre({ ...z.grid, angle: voisine ? voisine.grid.angle : (z.grid.angle ?? 90), side: voisine ? (voisine.grid.side || 1) : 1 }, p);
+      const collee = aimanter(z);
       z.ring = gridRing(z.grid);
       await saveSettings();
       S.placingGrid = null;
       S.adjusting = z.id;
       S.focusRing = z.ring;
-      toast('Zone placée : ajustez si besoin, puis Terminer');
+      toast(collee ? `Collée à « ${collee.nom} »` : 'Zone posée : glissez-la si besoin');
       render();
     });
     $('#cancel-place', root).onclick = () => { S.placingGrid = null; render(); };
   }
-  // Ajustement fin d'une zone en rangées
+  // Ajustement : glisser la zone (aimant) et la tourner
   if (S.adjusting) {
     const z = zones.find((x) => x.id === S.adjusting);
-    zoneLayers[z.id]?.closeTooltip();
-    $$('[data-adj]', root).forEach((b) => b.addEventListener('click', () => {
-      const pas = S.pas || 0.1;
-      const g = z.grid;
-      const rot = pas < 0.5 ? 0.5 : pas < 1 ? 2 : 5;
-      const mv = { n: [0, pas], s: [0, -pas], e: [pas, 0], w: [-pas, 0] }[b.dataset.adj];
-      if (mv) g.origin = fixLL(offsetLL(g.origin, mv[0], mv[1]));
-      if (b.dataset.adj === 'rotl' || b.dataset.adj === 'rotr') {
-        // Tourne autour du centre de la zone
-        const { L: lg, D } = gridSize(g);
-        const c = gridPos(g, lg / 2, D / 2);
-        g.angle = (g.angle + (b.dataset.adj === 'rotr' ? rot : -rot) + 360) % 360;
-        const c2 = gridPos(g, lg / 2, D / 2);
-        g.origin = fixLL(offsetLL(g.origin, (c[1] - c2[1]) * M_LAT * Math.cos(c[0] * Math.PI / 180), (c[0] - c2[0]) * M_LAT));
-      }
-      if (b.dataset.adj === 'flip') g.side = -(g.side || 1);
-      z.ring = gridRing(g);
+    const arm = () => {
+      const poly = zoneLayers[z.id];
+      if (!poly) return;
+      poly.closeTooltip();
+      poly.pm.enableLayerDrag();
+      poly.on('pm:dragstart', () => { if (unitLayers[z.id]) { group.removeLayer(unitLayers[z.id]); delete unitLayers[z.id]; } });
+      poly.on('pm:dragend', () => {
+        const r = poly.getLatLngs()[0].map((ll) => [ll.lat, ll.lng]);
+        const c = [r.reduce((t, q) => t + q[0], 0) / r.length, r.reduce((t, q) => t + q[1], 0) / r.length];
+        z.grid = gridAuCentre(z.grid, c);
+        const collee = aimanter(z);
+        if (collee) toast(`Collée à « ${collee.nom} »`, 1500);
+        z.ring = gridRing(z.grid);
+        drawZone(z, group, root);
+        arm();
+      });
+    };
+    arm();
+    $$('[data-rot]', root).forEach((b) => b.addEventListener('click', () => {
+      const c = gridCentre(z.grid);
+      z.grid.angle = (z.grid.angle + Number(b.dataset.rot) + 360) % 360;
+      z.grid = gridAuCentre(z.grid, c);
+      z.ring = gridRing(z.grid);
       drawZone(z, group, root);
-      zoneLayers[z.id]?.closeTooltip();
+      arm();
     }));
-    $('#adj-pas', root).onclick = () => { S.pas = { 0.1: 0.5, 0.5: 1, 1: 0.1 }[S.pas || 0.1]; S.mapView = { c: map.getCenter(), z: map.getZoom() }; render(); };
     $('#adj-end', root).onclick = async () => {
       S.adjusting = null;
       await saveSettings();
@@ -1551,8 +1588,6 @@ function zoneDialog(zone) {
   const last = [...zones].reverse().find((x) => x.grid && x.id !== z.id);
   const g = z.grid || { contenant: last?.grid.contenant || conts[0]?.nom, cols: '', rows: '', etages: 1, gap: 0, sens: 'long' };
   const forme = z.grid || isNew ? 'grille' : (z.ring ? 'libre' : 'grille');
-  const voisines = zones.filter((x) => x.grid?.origin && x.id !== z.id);
-  const ecart = String(S.settings.ecartZones ?? 0.5).replace('.', ',');
   const form = openDlg(isNew ? 'Nouvelle zone' : `Zone ${z.nom}`, `
     <label>Nom de la zone<input name="nom" required value="${esc(z.nom)}" placeholder="ex. Zone A, Place du hangar…"></label>
     <label>Remarque<input name="note" value="${esc(z.note || '')}" placeholder="ex. derrière le hangar, accès camion"></label>
@@ -1571,15 +1606,9 @@ function zoneDialog(zone) {
         <label>Espace entre contenants (m)<input name="gap" inputmode="decimal" value="${String(g.gap || 0).replace('.', ',')}"></label>
       </div>
       <p class="box tiny" id="g-info"></p>
-      <label>Emplacement sur la carte<select name="place">
-        ${g.origin ? '<option value="garder">Garder la position actuelle</option>' : ''}
-        <option value="tap">Toucher 2 points sur la carte (coin + alignement)</option>
-        ${voisines.map((v) => `<option value="apres:${esc(v.id)}">À la suite de « ${esc(v.nom)} » (même ligne)</option><option value="derriere:${esc(v.id)}">Derrière « ${esc(v.nom)} »</option><option value="devant:${esc(v.id)}">Devant « ${esc(v.nom)} »</option>`).join('')}
-      </select></label>
-      <label id="l-ecart">Espace avec la zone voisine (m)<input name="ecart" inputmode="decimal" value="${ecart}"></label>
     </div>
     ${isNew ? '' : `<div class="row mt">
-      <button type="button" id="z-adjust" ${z.grid?.origin ? '' : 'hidden'}>✥ Ajuster la position</button>
+      <button type="button" id="z-adjust" ${z.grid?.origin ? '' : 'hidden'}>✥ Déplacer / tourner</button>
       <button type="button" id="z-draw">✏ ${z.ring && !z.grid ? 'Redessiner' : 'Dessiner librement'}</button>
       ${z.ring && !z.grid ? '<button type="button" id="z-edit">Corriger le contour</button>' : ''}</div>
       <div class="row mt">
@@ -1598,7 +1627,6 @@ function zoneDialog(zone) {
   const refresh = () => {
     const libre = form.forme.value === 'libre';
     $('#f-grille', form).hidden = libre;
-    $('#l-ecart', form).hidden = !/^(apres|derriere|devant):/.test(form.place.value);
     $('#g-info', form).textContent = num(form.cols.value) && num(form.rows.value) ? gridText(readGrid()) : 'Indiquez le nombre de contenants dans une ligne et le nombre de lignes.';
   };
   form.addEventListener('input', refresh);
@@ -1620,21 +1648,14 @@ function zoneDialog(zone) {
     }
     if (!num(f.cols) || !num(f.rows)) { toast('Indiquez le nombre de contenants et de lignes'); return; }
     const ng = readGrid();
-    const ec = Math.max(0, num(f.ecart));
-    S.settings.ecartZones = ec;
-    const [mode, refId] = f.place.split(':');
     dlg().close();
-    if (mode === 'garder' && ng.origin) {
-      z.grid = ng;
-      z.ring = gridRing(ng);
-      await saveSettings();
-      render();
-    } else if (refId) {
-      z.grid = gridApres(ng, zones.find((x) => x.id === refId), mode, ec);
+    if (ng.origin) {
+      // Garde le centre actuel ; seules les dimensions changent.
+      const c = z.grid?.origin ? gridCentre(z.grid) : ng.origin;
+      z.grid = gridAuCentre(ng, c);
       z.ring = gridRing(z.grid);
       await saveSettings();
-      startMode('adjusting', z.id, z.ring);
-      toast('Zone placée : ajustez si besoin, puis Terminer');
+      render();
     } else {
       z.grid = ng;
       await saveSettings();
@@ -1714,7 +1735,8 @@ function renderPlus() {
         <label>Longueurs<textarea name="longueurs" rows="6">${esc(s.longueurs.join('\n'))}</textarea></label>
       </div>
       <label>Contenants <small class="muted">(nom = unité = stères = dimensions au sol en m, ex. « Caisse = caisse = 0,7 = 1,2 x 0,8 »)</small><textarea name="contenants" rows="4">${esc(s.contenants.map((c) => `${c.nom} = ${c.unite} = ${String(c.steres ?? '').replace('.', ',')}${c.dims ? ` = ${String(c.dims[0]).replace('.', ',')} x ${String(c.dims[1]).replace('.', ',')}` : ''}`).join('\n'))}</textarea></label>
-      <p class="hint">Les zones de stockage se dessinent dans l’onglet <b>Zones</b>.</p>
+      <label>Espace habituel entre deux zones (m)<input name="ecartZones" inputmode="decimal" value="${String(s.ecartZones ?? 0.5).replace('.', ',')}"></label>
+      <p class="hint">Les zones de stockage se placent dans l’onglet <b>Zones</b>.</p>
       <label>Entreprises / fournisseurs<textarea name="entreprises" rows="4">${esc(s.entreprises.join('\n'))}</textarea></label>
       <h3>Coordonnées pour le bon de livraison</h3>
       <div class="grid2">
@@ -1788,7 +1810,7 @@ function bindPlus(root) {
       return { nom: nom.trim(), unite: (u || nom).trim(), steres: num(st), ...(m ? { dims: [num(m[1]), num(m[2])] } : {}) };
     });
     if (!ess.length || !lon.length || !con.length || !prods.length) { toast('Chaque liste doit contenir au moins un élément'); return; }
-    Object.assign(s, { essences: ess, longueurs: lon, contenants: con, produits: prods, entreprises: lines(f.entreprises) });
+    Object.assign(s, { essences: ess, longueurs: lon, contenants: con, produits: prods, entreprises: lines(f.entreprises), ecartZones: Math.max(0, num(f.ecartZones)) });
     for (const z of s.lieux) if (z.grid?.origin) z.ring = gridRing(z.grid);
     s.triage = { nom: f.t_nom.trim(), tel: f.t_tel.trim(), adresse: f.t_adresse.trim(), email: f.t_email.trim() };
     await saveSettings();
