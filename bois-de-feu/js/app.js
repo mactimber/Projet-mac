@@ -1,0 +1,1493 @@
+// Bois de feu — stock, entrées de bois, commandes et livraisons.
+// Triage forestier du Vallon. Toutes les données restent sur l'appareil.
+
+import { db, uid, STORE_NAMES } from './db.js';
+import { storePhoto, fillImages, cleanPhotos, photoURL, blobToDataURL, dataURLToBlob } from './photos.js';
+
+// ---------------------------------------------------------------- Constantes
+
+const ETATS = { sec: 'Sec – prêt', sechage: 'En séchage', vert: 'Vert' };
+const TYPES = {
+  initial: 'Stock ajouté',
+  propre: 'Notre façonnage',
+  facon: 'Façonnage entreprise',
+  achat: 'Achat bois prêt / sec',
+  inventaire: 'Correction inventaire',
+  livraison: 'Livraison client',
+};
+const ENTREE_TYPES = ['facon', 'achat', 'propre', 'initial'];
+const STATUTS = { a_planifier: 'À planifier', planifiee: 'Planifiée', livree: 'Livrée – à facturer', facturee: 'Facturée' };
+
+const SETTINGS_VERSION = 2;
+const TOUTES_LONGUEURS = ['1 m', '50 cm', '33 cm', '25 cm'];
+
+// Produits vendus : 1 m en ballots, le reste en big-bags, foyard 25 et 33 aussi en caisses.
+function defaultProduits() {
+  const out = [];
+  const add = (essence, longueurs) => longueurs.forEach((longueur) => {
+    out.push({ essence, longueur, contenant: longueur === '1 m' ? 'Ballot' : 'Big-bag' });
+    if (essence === 'Foyard' && (longueur === '33 cm' || longueur === '25 cm')) out.push({ essence, longueur, contenant: 'Caisse' });
+  });
+  add('Foyard', TOUTES_LONGUEURS);
+  add('Mélèze', TOUTES_LONGUEURS);
+  add('Épicéa', TOUTES_LONGUEURS);
+  add('Frêne', ['1 m', '33 cm']);
+  add('Feuillus indigènes', ['33 cm']);
+  add('Bouleau', ['50 cm']);
+  return out;
+}
+
+const DEFAULT_CATALOGUE = () => ({
+  essences: ['Foyard', 'Mélèze', 'Épicéa', 'Frêne', 'Feuillus indigènes', 'Bouleau'],
+  longueurs: [...TOUTES_LONGUEURS],
+  contenants: [
+    { nom: 'Ballot', unite: 'ballot', steres: 1 },
+    { nom: 'Big-bag', unite: 'bb', steres: 1 },
+    { nom: 'Caisse', unite: 'caisse', steres: 0.7 },
+  ],
+  produits: defaultProduits(),
+});
+
+const DEFAULT_SETTINGS = {
+  version: SETTINGS_VERSION,
+  ...DEFAULT_CATALOGUE(),
+  lieux: [{ id: 'zA', nom: 'Zone A' }],
+  plan: null,
+  entreprises: [],
+  seuils: {},
+  triage: { nom: 'Triage forestier du Vallon', adresse: 'Réchy', tel: '', email: '' },
+  numero: { annee: new Date().getFullYear(), n: 0 },
+};
+
+// ---------------------------------------------------------------- État
+
+const S = {
+  settings: null,
+  lots: [],
+  mvts: [],
+  cmds: [],
+  view: 'stock',
+  fLieu: '',
+  fEtat: '',
+  showEmpty: false,
+  fType: '',
+  placing: null, // id de la zone à placer sur le plan
+};
+
+// ---------------------------------------------------------------- Outils
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const round = (n) => Math.round(n * 1000) / 1000;
+const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.').replace(/\s/g, '')); return Number.isFinite(n) ? n : 0; };
+const fmtQ = (n) => round(n).toLocaleString('fr-CH', { maximumFractionDigits: 2 });
+const fmtCHF = (n) => (n || n === 0) && n !== '' ? `CHF ${Number(n).toLocaleString('fr-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const nowISO = () => new Date().toISOString();
+const fmtDate = (s, opts = { day: 'numeric', month: 'short', year: 'numeric' }) => (s ? new Date(`${s.slice(0, 10)}T12:00:00`).toLocaleDateString('fr-CH', opts) : '');
+const fmtDay = (s) => fmtDate(s, { weekday: 'long', day: 'numeric', month: 'long' });
+
+const pkey = (p) => `${p.essence}|${p.longueur}|${p.contenant}`;
+const plabel = (p) => `${p.essence} · ${p.longueur} · ${p.contenant}`;
+const unite = (contenant) => (S.settings.contenants.find((c) => c.nom === contenant) || {}).unite || contenant;
+const qty = (n, contenant) => `${fmtQ(n)} ${unite(contenant)}`;
+const lieuNom = (id) => (S.settings.lieux.find((l) => l.id === id) || {}).nom || '—';
+const parseKey = (k) => { const [essence, longueur, contenant] = String(k).split('|'); return { essence, longueur, contenant }; };
+const stPar = (contenant) => (S.settings.contenants.find((c) => c.nom === contenant) || {}).steres || 0;
+const steres = (n, contenant) => n * stPar(contenant);
+const fmtSt = (n, contenant) => (stPar(contenant) && stPar(contenant) !== 1 ? ` (≈ ${fmtQ(steres(n, contenant))} st)` : '');
+const snap = (l) => ({ essence: l.essence, longueur: l.longueur, contenant: l.contenant, lieu: l.lieu });
+
+function moisDepuis(date) {
+  if (!date) return '';
+  const d = new Date(`${date}T12:00:00`);
+  const n = new Date();
+  const m = (n.getFullYear() - d.getFullYear()) * 12 + (n.getMonth() - d.getMonth()) - (n.getDate() < d.getDate() ? 1 : 0);
+  if (m < 1) return 'moins d’1 mois';
+  if (m < 24) return `${m} mois`;
+  return `${Math.floor(m / 12)} ans ${m % 12 ? `${m % 12} mois` : ''}`.trim();
+}
+
+function toast(msg, ms = 2400) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('on'), ms);
+}
+
+function upsert(arr, o) {
+  const i = arr.findIndex((x) => x.id === o.id);
+  if (i >= 0) arr[i] = o; else arr.push(o);
+}
+
+function options(list, value, { empty } = {}) {
+  const vals = list.map((x) => (typeof x === 'string' ? { v: x, t: x } : x));
+  if (value && !vals.some((x) => x.v === value)) vals.push({ v: value, t: value });
+  return (empty !== undefined ? `<option value="">${esc(empty)}</option>` : '')
+    + vals.map((x) => `<option value="${esc(x.v)}"${x.v === value ? ' selected' : ''}>${esc(x.t)}</option>`).join('');
+}
+
+const lieuOptions = (v, opts) => options(S.settings.lieux.map((l) => ({ v: l.id, t: l.nom })), v, opts);
+const zoneIndex = (id) => { const i = S.settings.lieux.findIndex((z) => z.id === id); return i < 0 ? 999 : i; };
+const etatOptions = (v, opts) => options(Object.entries(ETATS).map(([k, t]) => ({ v: k, t })), v, opts);
+
+function produitOptions(value) {
+  const list = [...S.settings.produits];
+  if (value && !list.some((p) => pkey(p) === value)) list.push(parseKey(value));
+  const groups = new Map();
+  for (const p of list) {
+    if (!groups.has(p.essence)) groups.set(p.essence, []);
+    groups.get(p.essence).push(p);
+  }
+  return [...groups].map(([e, ps]) => `<optgroup label="${esc(e)}">${ps.map((p) => `<option value="${esc(pkey(p))}"${pkey(p) === value ? ' selected' : ''}>${esc(p.essence)} ${esc(p.longueur)} · ${esc(p.contenant)}</option>`).join('')}</optgroup>`).join('');
+}
+
+function productSelect(p) {
+  const value = p && p.essence ? pkey(p) : (S.settings.produits[0] ? pkey(S.settings.produits[0]) : '');
+  return `<label>Produit<select name="produit" class="f-produit" required>${produitOptions(value)}</select></label>`;
+}
+
+function formData(form) {
+  return Object.fromEntries(new FormData(form));
+}
+
+// ---------------------------------------------------------------- Enregistrement
+
+async function saveSettings() { await db.put('kv', { key: 'settings', value: S.settings }); }
+
+async function saveLot(l) {
+  l.updated = nowISO();
+  await db.put('lots', l);
+  upsert(S.lots, l);
+}
+
+async function delLot(l) {
+  await db.del('lots', l.id);
+  S.lots = S.lots.filter((x) => x.id !== l.id);
+}
+
+async function saveMvt(m) {
+  m.id ||= uid();
+  m.ts ||= nowISO();
+  m.date ||= today();
+  await db.put('mouvements', m);
+  upsert(S.mvts, m);
+  return m;
+}
+
+async function delMvt(m) {
+  await db.del('mouvements', m.id);
+  S.mvts = S.mvts.filter((x) => x.id !== m.id);
+}
+
+async function saveCmd(c) {
+  c.updated = nowISO();
+  await db.put('commandes', c);
+  upsert(S.cmds, c);
+}
+
+async function delCmd(c) {
+  await db.del('commandes', c.id);
+  S.cmds = S.cmds.filter((x) => x.id !== c.id);
+}
+
+function usedPhotos() {
+  const used = new Set();
+  for (const o of [...S.lots, ...S.mvts, ...S.cmds]) for (const id of o.photos || []) used.add(id);
+  for (const c of S.cmds) for (const id of c.livraison?.photos || []) used.add(id);
+  if (S.settings?.plan) used.add(S.settings.plan);
+  return used;
+}
+
+function addEntreprise(nom) {
+  nom = (nom || '').trim();
+  if (nom && !S.settings.entreprises.includes(nom)) {
+    S.settings.entreprises.push(nom);
+    S.settings.entreprises.sort((a, b) => a.localeCompare(b, 'fr'));
+    saveSettings();
+  }
+}
+
+// ---------------------------------------------------------------- Zone à prendre / réserve
+// Pour chaque produit, un seul lot est « à prendre » (zone en cours). Les autres sont en réserve.
+// Quand le lot en cours est vide, on ouvre la réserve suivante : déjà entamée, puis sèche, puis la plus ancienne.
+
+function ordreReserve(lots) {
+  return [...lots].sort((a, b) => (a.role === 'prendre' ? 0 : 1) - (b.role === 'prendre' ? 0 : 1)
+    || (a.entame ? 0 : 1) - (b.entame ? 0 : 1)
+    || (a.etat === 'sec' ? 0 : 1) - (b.etat === 'sec' ? 0 : 1)
+    || (a.dateMise || '').localeCompare(b.dateMise || '')
+    || zoneIndex(a.lieu) - zoneIndex(b.lieu));
+}
+
+const lotCourant = (k) => S.lots.find((l) => pkey(l) === k && l.role === 'prendre' && l.quantite > 0);
+
+async function ensureCourant(k, { announce = true } = {}) {
+  const ls = S.lots.filter((l) => pkey(l) === k);
+  for (const l of ls) {
+    if (l.quantite <= 0 && (l.role === 'prendre' || l.entame)) { l.role = 'reserve'; l.entame = false; await saveLot(l); }
+  }
+  const courants = ls.filter((l) => l.quantite > 0 && l.role === 'prendre');
+  if (courants.length > 1) {
+    for (const l of ordreReserve(courants).slice(1)) { l.role = 'reserve'; await saveLot(l); }
+    return;
+  }
+  if (courants.length === 1) return;
+  const next = ordreReserve(ls.filter((l) => l.quantite > 0 && l.etat === 'sec'))[0];
+  if (next) {
+    next.role = 'prendre';
+    await saveLot(next);
+    if (announce) setTimeout(() => toast(`👉 ${plabel(next)} : prendre maintenant en ${lieuNom(next.lieu)}`, 5000), 2500);
+  }
+}
+
+async function setCourant(lot) {
+  for (const l of S.lots) {
+    if (l.id !== lot.id && pkey(l) === pkey(lot) && l.role === 'prendre') { l.role = 'reserve'; await saveLot(l); }
+  }
+  lot.role = 'prendre';
+  await saveLot(lot);
+}
+
+// Répartit une quantité sur les lots, dans l'ordre (zone en cours puis réserves).
+// `used` mémorise ce qui est déjà pris (plusieurs lignes / commandes).
+function allocate(k, q, used = new Map(), forcedId = null) {
+  const avail = (l) => round(l.quantite - (used.get(l.id) || 0));
+  const cands = forcedId
+    ? S.lots.filter((l) => l.id === forcedId)
+    : ordreReserve(S.lots.filter((l) => pkey(l) === k && l.quantite > 0 && (l.etat === 'sec' || l.role === 'prendre')));
+  const parts = [];
+  let rest = round(q);
+  for (const l of cands) {
+    if (rest <= 0) break;
+    const a = avail(l);
+    if (a <= 0) continue;
+    const t = round(Math.min(a, rest));
+    parts.push({ lot: l, q: t });
+    used.set(l.id, round((used.get(l.id) || 0) + t));
+    rest = round(rest - t);
+  }
+  return { parts, manque: rest > 0 ? rest : 0 };
+}
+
+// ---------------------------------------------------------------- Dialogues
+
+const dlg = () => $('#dlg');
+
+function openDlg(title, body, actions, { wide } = {}) {
+  const d = dlg();
+  d.className = `dialog${wide ? ' wide' : ''}`;
+  d.innerHTML = `<form class="dlg-form" novalidate>
+    <header><h2>${esc(title)}</h2><button type="button" class="icon-close" data-close aria-label="Fermer">×</button></header>
+    <div class="dialog-body">${body}</div>
+    <footer class="row">${actions}</footer></form>`;
+  $$('[data-close]', d).forEach((b) => b.addEventListener('click', () => d.close()));
+  if (!d.open) d.showModal();
+  d.querySelector('.dialog-body').scrollTop = 0;
+  fillImages(d);
+  return d.querySelector('form');
+}
+
+function onSubmit(form, fn) {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    try {
+      await fn(formData(form));
+    } catch (err) {
+      console.error(err);
+      toast(`Erreur : ${err.message}`);
+    }
+  });
+}
+
+function viewPhoto(id) {
+  const v = $('#viewer');
+  photoURL(id).then((u) => { $('img', v).src = u; v.showModal(); });
+}
+
+// Éditeur de photos (miniatures + bouton appareil photo).
+function photoEditor(el, initial = []) {
+  const ids = [...initial];
+  const render = () => {
+    el.innerHTML = ids.map((id, i) => `<div class="ph"><img data-photo="${esc(id)}" alt=""><button type="button" class="ph-x" data-i="${i}" aria-label="Retirer la photo">×</button></div>`).join('')
+      + '<label class="ph-add"><span class="ph-ico">📷</span><span>Photo</span><input type="file" accept="image/*" multiple hidden></label>';
+    fillImages(el);
+  };
+  el.addEventListener('click', (e) => {
+    const x = e.target.closest('.ph-x');
+    if (x) { ids.splice(+x.dataset.i, 1); render(); return; }
+    const img = e.target.closest('img[data-photo]');
+    if (img) viewPhoto(img.dataset.photo);
+  });
+  el.addEventListener('change', async (e) => {
+    if (e.target.type !== 'file') return;
+    const files = [...e.target.files];
+    if (!files.length) return;
+    toast('Enregistrement de la photo…');
+    for (const f of files) {
+      try { ids.push(await storePhoto(f)); } catch (err) { toast(`Photo non lisible : ${err.message}`); }
+    }
+    render();
+  });
+  render();
+  return ids;
+}
+
+function photoStrip(ids = []) {
+  if (!ids.length) return '';
+  return `<div class="strip">${ids.map((id) => `<img data-photo="${esc(id)}" alt="" class="tap-photo">`).join('')}</div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const img = e.target.closest('img.tap-photo[data-photo]');
+  if (img) { e.stopPropagation(); viewPhoto(img.dataset.photo); }
+}, true);
+
+// ---------------------------------------------------------------- Calculs de stock
+
+function resume(lieu = '') {
+  const map = new Map();
+  const get = (p) => {
+    const k = pkey(p);
+    if (!map.has(k)) map.set(k, { k, p: parseKey(k), total: 0, sec: 0, autre: 0, aLivrer: 0 });
+    return map.get(k);
+  };
+  for (const l of S.lots) {
+    if (l.quantite <= 0 || (lieu && l.lieu !== lieu)) continue;
+    const r = get(l);
+    r.total += l.quantite;
+    if (l.etat === 'sec') r.sec += l.quantite; else r.autre += l.quantite;
+  }
+  if (!lieu) {
+    for (const c of S.cmds) {
+      if (c.statut !== 'a_planifier' && c.statut !== 'planifiee') continue;
+      for (const li of c.lignes) get(li).aLivrer += num(li.quantite);
+    }
+    for (const k of Object.keys(S.settings.seuils)) get(parseKey(k));
+  }
+  const ordre = new Map(S.settings.produits.map((p, i) => [pkey(p), i]));
+  return [...map.values()].sort((a, b) => (ordre.get(a.k) ?? 999) - (ordre.get(b.k) ?? 999) || plabel(a.p).localeCompare(plabel(b.p), 'fr'));
+}
+
+function alerte(r) {
+  const seuil = S.settings.seuils[r.k];
+  const reste = r.total - r.aLivrer;
+  if (reste < 0) return 'manque';
+  if (seuil !== undefined && reste < seuil) return 'bas';
+  return '';
+}
+
+// ---------------------------------------------------------------- Vue : Stock
+
+function renderStock() {
+  const rows = resume(S.fLieu);
+  const lots = S.lots
+    .filter((l) => (S.showEmpty || l.quantite > 0) && (!S.fLieu || l.lieu === S.fLieu) && (!S.fEtat || l.etat === S.fEtat))
+    .sort((a, b) => zoneIndex(a.lieu) - zoneIndex(b.lieu) || plabel(a).localeCompare(plabel(b), 'fr') || (a.dateMise || '').localeCompare(b.dateMise || ''));
+  const parLieu = new Map();
+  for (const l of lots) {
+    if (!parLieu.has(l.lieu)) parLieu.set(l.lieu, []);
+    parLieu.get(l.lieu).push(l);
+  }
+  const nbAlertes = rows.filter(alerte).length;
+  let totSt = 0;
+  let secSt = 0;
+  for (const r of rows) { totSt += steres(r.total, r.p.contenant); secSt += steres(r.sec, r.p.contenant); }
+
+  return `
+  <div class="filters row">
+    <select id="f-lieu" aria-label="Zone">${lieuOptions(S.fLieu, { empty: 'Toutes les zones' })}</select>
+    <select id="f-etat" aria-label="État">${etatOptions(S.fEtat, { empty: 'Tous les états' })}</select>
+  </div>
+
+  <section class="card">
+    <h2>Stock total ${S.fLieu ? `<small>· ${esc(lieuNom(S.fLieu))}</small>` : ''}</h2>
+    ${totSt ? `<p class="totst">≈ <b>${fmtQ(totSt)} stères</b>${secSt !== totSt ? ` <span class="muted">dont ${fmtQ(secSt)} st secs</span>` : ''}</p>` : ''}
+    ${nbAlertes ? `<p class="alert">⚠ ${nbAlertes} produit${nbAlertes > 1 ? 's' : ''} en stock bas ou insuffisant pour les commandes</p>` : ''}
+    ${rows.length ? `<table class="sum">
+      <thead><tr><th>Produit</th><th>Stock</th>${S.fLieu ? '' : '<th>À livrer</th><th>Reste</th>'}</tr></thead>
+      <tbody>${rows.map((r) => {
+        const a = alerte(r);
+        const cour = lotCourant(r.k);
+        return `<tr data-seuil="${esc(r.k)}" class="${a}">
+          <td><b>${esc(r.p.essence)} ${esc(r.p.longueur)}</b> <span class="muted">${esc(r.p.contenant)}</span>
+            <div class="tiny">${cour ? `<span class="take">👉 ${esc(lieuNom(cour.lieu))}</span> ` : (r.total ? '<span class="alert-txt">pas de zone à prendre</span> ' : '')}${r.autre ? `<span class="muted">séchage / vert ${fmtQ(r.autre)}</span>` : ''}${S.settings.seuils[r.k] !== undefined ? ` <span class="muted">· alerte sous ${fmtQ(S.settings.seuils[r.k])}</span>` : ''}</div></td>
+          <td class="n">${qty(r.total, r.p.contenant)}${stPar(r.p.contenant) && stPar(r.p.contenant) !== 1 && r.total ? `<div class="tiny muted">≈ ${fmtQ(steres(r.total, r.p.contenant))} st</div>` : ''}</td>
+          ${S.fLieu ? '' : `<td class="n">${r.aLivrer ? fmtQ(r.aLivrer) : '–'}</td><td class="n"><b>${fmtQ(r.total - r.aLivrer)}</b>${a ? ' ⚠' : ''}</td>`}
+        </tr>`;
+      }).join('')}</tbody></table>
+      <p class="hint">👉 = zone où l’on prend ce bois. Touchez une ligne pour régler un seuil d’alerte.</p>` : '<p class="hint">Aucun bois en stock pour le moment. Ajoutez un lot ci-dessous ou enregistrez une entrée de bois.</p>'}
+  </section>
+
+  <div class="row between">
+    <h2 class="sec-title">Lots par zone</h2>
+    <label class="check"><input type="checkbox" id="f-empty" ${S.showEmpty ? 'checked' : ''}> lots vides</label>
+  </div>
+  <button class="primary big" id="btn-new-lot">+ Ajouter un lot au stock</button>
+  ${[...parLieu.entries()].map(([lieu, ls]) => `
+    <h3>📍 ${esc(lieuNom(lieu))}</h3>
+    <div class="lots">${ls.map(lotCard).join('')}</div>`).join('') || '<p class="hint">Aucun lot avec ces filtres.</p>'}
+  `;
+}
+
+function roleBadge(l) {
+  if (l.quantite <= 0) return '<span class="badge vide">Vide</span>';
+  if (l.role === 'prendre') return '<span class="badge prendre">👉 À prendre</span>';
+  return '<span class="badge reserve">Réserve</span>';
+}
+
+function lotCard(l) {
+  return `<div class="lot ${l.quantite <= 0 ? 'empty' : ''} ${l.role === 'prendre' && l.quantite > 0 ? 'courant' : ''}" data-lot="${esc(l.id)}">
+    ${l.photos?.length ? `<img class="thumb" data-photo="${esc(l.photos[0])}" alt="">` : '<div class="thumb ph-none">🪵</div>'}
+    <div class="lot-main">
+      <b>${esc(l.essence)} ${esc(l.longueur)}</b> <span>${esc(l.contenant)}</span>
+      <div class="tiny">${roleBadge(l)}<span class="badge ${l.etat}">${esc(ETATS[l.etat] || l.etat)}</span></div>
+      <div class="tiny muted">${l.dateMise ? `depuis ${moisDepuis(l.dateMise)}` : ''}${l.humidite ? ` · ${fmtQ(l.humidite)} % hum.` : ''}${l.photos?.length > 1 ? ` · ${l.photos.length} 📷` : ''}${l.note ? ` · ${esc(l.note)}` : ''}</div>
+    </div>
+    <div class="qty">
+      <button type="button" data-dec aria-label="Moins">−</button>
+      <span><b>${fmtQ(l.quantite)}</b><small>${esc(unite(l.contenant))}</small></span>
+      <button type="button" data-inc aria-label="Plus">+</button>
+    </div>
+  </div>`;
+}
+
+function bindLots(root) {
+  $$('.lot[data-lot]', root).forEach((el) => {
+    const lot = S.lots.find((l) => l.id === el.dataset.lot);
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-dec]')) quickAdjust(lot, -1);
+      else if (e.target.closest('[data-inc]')) quickAdjust(lot, +1);
+      else lotDialog(lot);
+    });
+  });
+}
+
+function bindStock(root) {
+  $('#f-lieu', root).onchange = (e) => { S.fLieu = e.target.value; render(); };
+  $('#f-etat', root).onchange = (e) => { S.fEtat = e.target.value; render(); };
+  $('#f-empty', root).onchange = (e) => { S.showEmpty = e.target.checked; render(); };
+  $('#btn-new-lot', root).onclick = () => lotDialog(null, { lieu: S.fLieu });
+  $$('tr[data-seuil]', root).forEach((tr) => tr.addEventListener('click', () => seuilDialog(tr.dataset.seuil)));
+  bindLots(root);
+}
+
+// Boutons + / − : correction rapide d'inventaire (regroupée sur 2 minutes).
+async function quickAdjust(lot, d) {
+  const nq = Math.max(0, round(lot.quantite + d));
+  const delta = round(nq - lot.quantite);
+  if (!delta) return;
+  lot.quantite = nq;
+  await saveLot(lot);
+  const last = S.mvts.find((m) => m.quick && m.lotId === lot.id && Date.now() - Date.parse(m.ts) < 120000);
+  if (last) {
+    last.delta = round(last.delta + delta);
+    if (!last.delta) await delMvt(last); else await saveMvt(last);
+  } else {
+    await saveMvt({ type: 'inventaire', lotId: lot.id, delta, quick: true, ...snap(lot) });
+  }
+  await ensureCourant(pkey(lot));
+  render();
+}
+
+function seuilDialog(k) {
+  const p = parseKey(k);
+  const cur = S.settings.seuils[k];
+  const form = openDlg('Seuil d’alerte', `
+    <p><b>${esc(plabel(p))}</b></p>
+    <p class="hint">Une alerte s’affiche quand le stock restant (après les commandes à livrer) passe sous ce seuil.</p>
+    <label>Alerte en dessous de (${esc(unite(p.contenant))})<input name="seuil" inputmode="decimal" value="${cur ?? ''}" placeholder="aucune alerte"></label>`,
+  '<button type="button" data-close>Annuler</button><span class="spacer"></span><button class="primary">Enregistrer</button>');
+  onSubmit(form, async (f) => {
+    if (String(f.seuil).trim() === '') delete S.settings.seuils[k];
+    else S.settings.seuils[k] = num(f.seuil);
+    await saveSettings();
+    dlg().close();
+    render();
+  });
+}
+
+function historyList(mvts) {
+  if (!mvts.length) return '<p class="hint">Aucun mouvement.</p>';
+  return `<ul class="hist">${mvts.sort((a, b) => b.ts.localeCompare(a.ts)).map((m) => `
+    <li data-mvt="${esc(m.id)}"><span class="d">${fmtDate(m.date)}</span>
+      <span class="t">${esc(TYPES[m.type] || m.type)}${m.entreprise ? ` · ${esc(m.entreprise)}` : ''}${m.client ? ` · ${esc(m.client)}` : ''}${m.note ? `<br><small class="muted">${esc(m.note)}</small>` : ''}</span>
+      <span class="q ${m.delta < 0 ? 'neg' : 'pos'}">${m.delta > 0 ? '+' : ''}${qty(m.delta, m.contenant)}</span></li>`).join('')}</ul>`;
+}
+
+function lotDialog(lot, defaults = {}) {
+  const isNew = !lot;
+  const s = S.settings;
+  const p0 = s.produits[0] || {};
+  const l = lot ? { ...lot } : {
+    id: uid(), essence: p0.essence, longueur: p0.longueur, contenant: p0.contenant,
+    etat: 'sec', lieu: defaults.lieu || s.lieux[0]?.id, quantite: 0, dateMise: today(), photos: [], created: nowISO(), role: 'reserve',
+  };
+  const roleDefaut = (k, etat) => (lot ? lot.role : (etat === 'sec' && !lotCourant(k) ? 'prendre' : 'reserve'));
+  const form = openDlg(isNew ? 'Nouveau lot' : 'Lot de bois', `
+    ${productSelect(l)}
+    <div class="grid2">
+      <label>Zone<select name="lieu">${lieuOptions(l.lieu)}</select></label>
+      <label>État<select name="etat">${etatOptions(l.etat)}</select></label>
+      <label>Quantité (<span id="u">${esc(unite(l.contenant))}</span>)<input name="quantite" inputmode="decimal" required value="${isNew ? '' : fmtQ(l.quantite).replace(/\s/g, '')}" placeholder="0"></label>
+      <label>Mis en tas le<input type="date" name="dateMise" value="${esc(l.dateMise || '')}"></label>
+    </div>
+    <label>Utilisation<select name="role">
+      <option value="prendre">👉 À prendre – c’est ici qu’on se sert</option>
+      <option value="reserve">Réserve – ne pas toucher pour l’instant</option></select></label>
+    <p class="hint" id="role-hint"></p>
+    <div class="grid2">
+      <label>Provenance<input name="provenance" value="${esc(l.provenance || '')}" placeholder="coupe, fournisseur…"></label>
+      <label>Humidité %<input name="humidite" inputmode="decimal" value="${l.humidite ?? ''}" placeholder="humidimètre"></label>
+    </div>
+    <label>Remarque<textarea name="note" rows="2">${esc(l.note || '')}</textarea></label>
+    <h3>Photos</h3>
+    <div class="photos" id="pe"></div>
+    ${isNew ? '' : `<h3>Historique du lot</h3>${historyList(S.mvts.filter((m) => m.lotId === l.id))}`}
+  `, `${isNew ? '' : '<button type="button" class="danger" id="btn-del">Supprimer</button>'}<span class="spacer"></span>
+      <button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>`);
+  const photos = photoEditor($('#pe', form), l.photos);
+  const refresh = (first) => {
+    const k = form.produit.value;
+    $('#u', form).textContent = unite(parseKey(k).contenant);
+    if (first) form.role.value = roleDefaut(k, form.etat.value);
+    const cour = lotCourant(k);
+    $('#role-hint', form).textContent = cour && cour.id !== l.id
+      ? `Actuellement on prend ce bois en « ${lieuNom(cour.lieu)} » (${qty(cour.quantite, cour.contenant)}). Choisir « À prendre » mettra l’autre lot en réserve.`
+      : '';
+  };
+  form.produit.addEventListener('change', () => refresh(isNew));
+  refresh(true);
+
+  onSubmit(form, async (f) => {
+    const oldQ = isNew ? 0 : lot.quantite;
+    const oldK = isNew ? null : pkey(lot);
+    Object.assign(l, parseKey(f.produit), {
+      etat: f.etat, lieu: f.lieu, role: f.role,
+      quantite: Math.max(0, round(num(f.quantite))), dateMise: f.dateMise, provenance: f.provenance.trim(),
+      humidite: String(f.humidite).trim() ? num(f.humidite) : null, note: f.note.trim(), photos: [...photos],
+    });
+    if (l.role === 'prendre') await setCourant(l); else await saveLot(l);
+    const d = round(l.quantite - oldQ);
+    if (d) await saveMvt({ type: isNew ? 'initial' : 'inventaire', lotId: l.id, delta: d, ...snap(l) });
+    await ensureCourant(pkey(l), { announce: l.role !== 'prendre' });
+    if (oldK && oldK !== pkey(l)) await ensureCourant(oldK);
+    dlg().close();
+    toast(isNew ? 'Lot ajouté au stock' : 'Lot enregistré');
+    render();
+  });
+
+  if (!isNew) {
+    $('#btn-del', form).onclick = async () => {
+      if (!confirm('Supprimer ce lot ? (son historique est conservé)')) return;
+      if (lot.quantite > 0) await saveMvt({ type: 'inventaire', lotId: lot.id, delta: -lot.quantite, note: 'Lot supprimé', ...snap(lot) });
+      await delLot(lot);
+      await ensureCourant(pkey(lot));
+      dlg().close();
+      cleanPhotos(usedPhotos());
+      render();
+    };
+    $$('li[data-mvt]', form).forEach((li) => li.addEventListener('click', () => openMvt(li.dataset.mvt)));
+  }
+}
+
+// ---------------------------------------------------------------- Vue : Entrées
+
+function renderEntrees() {
+  const entrees = S.mvts.filter((m) => ENTREE_TYPES.includes(m.type)).sort((a, b) => (b.date + b.ts).localeCompare(a.date + a.ts));
+  const annee = String(new Date().getFullYear());
+  const tot = {};
+  for (const m of entrees) {
+    if (!m.date.startsWith(annee) || m.type === 'initial') continue;
+    const k = `${TYPES[m.type]}|${m.contenant}`;
+    tot[k] = (tot[k] || 0) + m.delta;
+  }
+  return `
+  <section class="card">
+    <h2>Nouvelle entrée de bois</h2>
+    <div class="big-choices">
+      <button class="choice" data-entree="facon"><span>🪓</span><b>Façonnage par une entreprise</b><small>l’entreprise externe coupe et fend notre bois</small></button>
+      <button class="choice" data-entree="achat"><span>🚚</span><b>Livraison de bois prêt / sec</b><small>bois acheté, déjà prêt</small></button>
+      <button class="choice" data-entree="propre"><span>🌲</span><b>Notre propre façonnage</b><small>bois préparé par l’équipe du triage</small></button>
+    </div>
+  </section>
+  ${Object.keys(tot).length ? `<section class="card"><h2>Entrées ${annee}</h2><ul class="plain">${Object.entries(tot).map(([k, v]) => { const [t, c] = k.split('|'); return `<li>${esc(t)} : <b>${qty(v, c)}</b></li>`; }).join('')}</ul></section>` : ''}
+  <h2 class="sec-title">Dernières entrées</h2>
+  ${entrees.length ? `<div class="list">${entrees.slice(0, 100).map((m) => `
+    <div class="item" data-mvt="${esc(m.id)}">
+      <div class="item-top"><b>${esc(TYPES[m.type])}</b><span class="q pos">+${qty(m.delta, m.contenant)}</span></div>
+      <div>${esc(plabel(m))} · ${esc(ETATS[m.etat] || '')}</div>
+      <div class="tiny muted">${fmtDate(m.date)}${m.entreprise ? ` · ${esc(m.entreprise)}` : ''} · 📍 ${esc(lieuNom(m.lieu))}${m.prix ? ` · ${fmtCHF(m.prix)}` : ''}</div>
+      ${photoStrip(m.photos)}
+    </div>`).join('')}</div>` : '<p class="hint">Aucune entrée enregistrée.</p>'}`;
+}
+
+function bindEntrees(root) {
+  $$('[data-entree]', root).forEach((b) => b.addEventListener('click', () => entreeDialog(b.dataset.entree)));
+  $$('[data-mvt]', root).forEach((el) => el.addEventListener('click', () => openMvt(el.dataset.mvt)));
+}
+
+function openMvt(id) {
+  const m = S.mvts.find((x) => x.id === id);
+  if (!m) return;
+  if (ENTREE_TYPES.includes(m.type)) entreeDialog(m.type, m);
+  else if (m.type === 'livraison' && m.commandeId && S.cmds.some((c) => c.id === m.commandeId)) cmdDetail(S.cmds.find((c) => c.id === m.commandeId));
+  else {
+    const lot = S.lots.find((l) => l.id === m.lotId);
+    if (lot) lotDialog(lot); else toast('Ce lot a été supprimé');
+  }
+}
+
+function lotsCompatibles(p, lieu, includeEmpty = false) {
+  return S.lots.filter((l) => pkey(l) === pkey(p) && (!lieu || l.lieu === lieu) && (includeEmpty || l.quantite > 0));
+}
+
+function entreeDialog(type, mvt) {
+  const isNew = !mvt;
+  const s = S.settings;
+  const m = mvt ? { ...mvt } : {
+    type, date: today(), ...(s.produits[0] || {}),
+    etat: type === 'achat' ? 'sec' : 'vert', lieu: s.lieux[0]?.id, photos: [],
+  };
+  const avecEntreprise = type !== 'propre' && type !== 'initial';
+  const lot = !isNew && S.lots.find((l) => l.id === m.lotId);
+  const form = openDlg(TYPES[type], `
+    <div class="grid2">
+      <label>Date<input type="date" name="date" required value="${esc(m.date)}"></label>
+      ${avecEntreprise ? `<label>${type === 'achat' ? 'Fournisseur' : 'Entreprise'}<input name="entreprise" list="dl-entreprises" value="${esc(m.entreprise || '')}" placeholder="nom"></label>` : ''}
+    </div>
+    ${isNew ? `${productSelect(m)}
+    <div class="grid2">
+      <label>État du bois<select name="etat">${etatOptions(m.etat)}</select></label>
+      <label>Zone de stockage<select name="lieu">${lieuOptions(m.lieu)}</select></label>
+    </div>
+    <label>Ajouter à<select name="cible" id="cible"></select></label>`
+    : `<p class="box"><b>${esc(plabel(m))}</b> · ${esc(ETATS[m.etat] || '')}<br>📍 ${esc(lieuNom(m.lieu))}${lot ? '' : ' <span class="muted">(lot supprimé)</span>'}</p>`}
+    <div class="grid2">
+      <label>Quantité (<span id="u">${esc(unite(m.contenant))}</span>)<input name="quantite" inputmode="decimal" required value="${isNew ? '' : fmtQ(m.delta).replace(/\s/g, '')}" placeholder="0"></label>
+      <label>${type === 'facon' ? 'Coût façonnage' : 'Prix'} CHF<input name="prix" inputmode="decimal" value="${m.prix ?? ''}" placeholder="facultatif"></label>
+    </div>
+    <label>Remarque<textarea name="note" rows="2" placeholder="n° de bon, heures, provenance de la coupe…">${esc(m.note || '')}</textarea></label>
+    <h3>Photos <small class="muted">(bon de livraison, tas de bois…)</small></h3>
+    <div class="photos" id="pe"></div>
+  `, `${isNew ? '' : '<button type="button" class="danger" id="btn-del">Supprimer</button>'}<span class="spacer"></span>
+      <button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>`);
+  const photos = photoEditor($('#pe', form), m.photos);
+
+  const refreshCible = () => {
+    if (!isNew) return;
+    const p = parseKey(form.produit.value);
+    const ls = lotsCompatibles(p, form.lieu.value);
+    $('#cible', form).innerHTML = '<option value="">Nouveau lot dans cette zone (en réserve)</option>'
+      + ls.map((l) => `<option value="${esc(l.id)}">Lot existant : ${l.role === 'prendre' ? '👉 à prendre' : 'réserve'}, ${esc(ETATS[l.etat])}, ${qty(l.quantite, l.contenant)}${l.dateMise ? `, du ${fmtDate(l.dateMise)}` : ''}</option>`).join('');
+    $('#u', form).textContent = unite(p.contenant);
+  };
+  if (isNew) {
+    ['produit', 'lieu'].forEach((n) => form[n].addEventListener('change', refreshCible));
+    refreshCible();
+  }
+
+  onSubmit(form, async (f) => {
+    const q = round(num(f.quantite));
+    if (q <= 0) { toast('Indiquez une quantité'); return; }
+    const common = {
+      date: f.date, entreprise: (f.entreprise || '').trim(), prix: String(f.prix ?? '').trim() ? num(f.prix) : null,
+      note: f.note.trim(), photos: [...photos],
+    };
+    if (avecEntreprise) addEntreprise(common.entreprise);
+    if (isNew) {
+      let target = f.cible && S.lots.find((l) => l.id === f.cible);
+      if (target) {
+        target.quantite = round(target.quantite + q);
+        target.photos = [...new Set([...(target.photos || []), ...photos])];
+      } else {
+        target = {
+          id: uid(), ...parseKey(f.produit), etat: f.etat, lieu: f.lieu, role: 'reserve',
+          quantite: q, dateMise: f.date, provenance: [TYPES[type], common.entreprise].filter(Boolean).join(' – '),
+          photos: [...photos], note: '', created: nowISO(),
+        };
+      }
+      await saveLot(target);
+      await saveMvt({ type, lotId: target.id, delta: q, etat: target.etat, ...snap(target), ...common });
+      toast(`+${qty(q, target.contenant)} ajouté au stock (${lieuNom(target.lieu)})`);
+      await ensureCourant(pkey(target));
+    } else {
+      const d = round(q - mvt.delta);
+      if (lot && d) { lot.quantite = Math.max(0, round(lot.quantite + d)); await saveLot(lot); await ensureCourant(pkey(lot)); }
+      await saveMvt({ ...mvt, ...common, delta: q });
+      toast('Entrée modifiée');
+    }
+    dlg().close();
+    cleanPhotos(usedPhotos());
+    render();
+  });
+
+  if (!isNew) {
+    $('#btn-del', form).onclick = async () => {
+      if (!confirm(`Supprimer cette entrée ?${lot ? `\nLe stock du lot sera diminué de ${qty(mvt.delta, mvt.contenant)}.` : ''}`)) return;
+      if (lot) { lot.quantite = Math.max(0, round(lot.quantite - mvt.delta)); await saveLot(lot); await ensureCourant(pkey(lot)); }
+      await delMvt(mvt);
+      dlg().close();
+      cleanPhotos(usedPhotos());
+      render();
+    };
+  }
+}
+
+// ---------------------------------------------------------------- Vue : Livraisons
+
+function clientsConnus() {
+  const map = new Map();
+  for (const c of [...S.cmds].sort((a, b) => (a.created || '').localeCompare(b.created || ''))) {
+    if (c.client?.nom) map.set(c.client.nom.trim().toLowerCase(), c.client);
+  }
+  return map;
+}
+
+function cmdCard(c) {
+  const late = (c.statut === 'planifiee' && c.datePrevue && c.datePrevue < today());
+  return `<div class="item cmd ${c.statut} ${late ? 'late' : ''}" data-cmd="${esc(c.id)}">
+    <div class="item-top"><b>${esc(c.client?.nom || 'Client')}</b><span class="muted">n° ${esc(c.numero)}</span></div>
+    <div>${c.lignes.map((li) => `${qty(num(li.quantite), li.contenant)} ${esc(li.essence)} ${esc(li.longueur)}`).join(' + ')}</div>
+    <div class="tiny muted">${c.client?.adresse ? `📍 ${esc(c.client.adresse.split('\n').join(', '))}` : ''}${c.datePrevue && c.statut !== 'livree' && c.statut !== 'facturee' ? ` · 📅 ${fmtDate(c.datePrevue)}` : ''}${c.livraison ? ` · livré le ${fmtDate(c.livraison.date)}` : ''}${c.prix ? ` · ${fmtCHF(c.prix)}` : ''}</div>
+    ${late ? '<div class="tiny alert-txt">En retard</div>' : ''}
+  </div>`;
+}
+
+function tourneeURL(cmds) {
+  const adr = cmds.map((c) => (c.client?.adresse || '').replace(/\n/g, ', ').trim()).filter(Boolean);
+  if (!adr.length) return '';
+  const dest = adr[adr.length - 1];
+  const way = adr.slice(0, -1);
+  return `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(dest)}${way.length ? `&waypoints=${encodeURIComponent(way.join('|'))}` : ''}`;
+}
+
+function renderLivraisons() {
+  const by = (st) => S.cmds.filter((c) => c.statut === st);
+  const aPlan = by('a_planifier').sort((a, b) => (a.created || '').localeCompare(b.created || ''));
+  const plan = by('planifiee').sort((a, b) => (a.datePrevue || '').localeCompare(b.datePrevue || '') || (a.ordre || 0) - (b.ordre || 0));
+  const livrees = by('livree').sort((a, b) => (b.livraison?.date || '').localeCompare(a.livraison?.date || ''));
+  const fact = by('facturee').sort((a, b) => (b.livraison?.date || '').localeCompare(a.livraison?.date || ''));
+  const jours = new Map();
+  for (const c of plan) {
+    if (!jours.has(c.datePrevue)) jours.set(c.datePrevue, []);
+    jours.get(c.datePrevue).push(c);
+  }
+  return `
+  <button class="primary big" id="btn-new-cmd">+ Nouvelle commande</button>
+
+  <h2 class="sec-title">Planning des livraisons</h2>
+  ${jours.size ? [...jours.entries()].map(([d, cs]) => {
+    const url = tourneeURL(cs);
+    let tot = {};
+    for (const c of cs) for (const li of c.lignes) tot[li.contenant] = (tot[li.contenant] || 0) + num(li.quantite);
+    return `<div class="day ${d < today() ? 'late' : ''} ${d === today() ? 'today' : ''}">
+      <div class="day-head"><b>${d === today() ? 'Aujourd’hui · ' : ''}${esc(fmtDay(d))}</b>
+        <span class="tiny muted">${cs.length} livraison${cs.length > 1 ? 's' : ''} · ${Object.entries(tot).map(([c, n]) => qty(n, c)).join(', ')}</span>
+        <span class="day-btns"><button type="button" class="small" data-charge="${esc(d)}">📋 Chargement</button>
+        ${url ? `<a class="btn small" href="${esc(url)}" target="_blank" rel="noopener">🗺 Tournée</a>` : ''}</span></div>
+      <div class="list">${cs.map(cmdCard).join('')}</div></div>`;
+  }).join('') : '<p class="hint">Aucune livraison planifiée.</p>'}
+
+  ${aPlan.length ? `<h2 class="sec-title">À planifier <small>(${aPlan.length})</small></h2><div class="list">${aPlan.map(cmdCard).join('')}</div>` : ''}
+  ${livrees.length ? `<h2 class="sec-title">Livrées – à facturer <small>(${livrees.length})</small></h2><div class="list">${livrees.map(cmdCard).join('')}</div>` : ''}
+  ${fact.length ? `<details class="sec-details"><summary>Facturées (${fact.length})</summary><div class="list">${fact.slice(0, 100).map(cmdCard).join('')}</div></details>` : ''}
+  `;
+}
+
+function bindLivraisons(root) {
+  $('#btn-new-cmd', root).onclick = () => cmdDialog();
+  $$('[data-charge]', root).forEach((b) => b.addEventListener('click', () => chargementDialog(b.dataset.charge)));
+  $$('[data-cmd]', root).forEach((el) => el.addEventListener('click', () => cmdDetail(S.cmds.find((c) => c.id === el.dataset.cmd))));
+}
+
+function nextNumero() {
+  const y = new Date().getFullYear();
+  const n = S.settings.numero || { annee: y, n: 0 };
+  if (n.annee !== y) { n.annee = y; n.n = 0; }
+  n.n += 1;
+  S.settings.numero = n;
+  saveSettings();
+  return `${y}-${String(n.n).padStart(3, '0')}`;
+}
+
+function ligneRow(li = {}) {
+  const p = li.essence ? li : (S.settings.produits[0] || {});
+  return `<div class="ligne">${productSelect(p)}
+    <div class="ligne-q"><label>Quantité<input class="f-q" inputmode="decimal" required value="${li.quantite ?? ''}" placeholder="0"></label>
+    <span class="u">${esc(unite(p.contenant))}</span>
+    <button type="button" class="danger small" data-rm aria-label="Retirer la ligne">Retirer</button></div></div>`;
+}
+
+function cmdDialog(cmd) {
+  const isNew = !cmd;
+  const c = cmd ? structuredClone(cmd) : { id: uid(), client: {}, lignes: [{}], statut: 'a_planifier', created: nowISO(), photos: [] };
+  const clients = clientsConnus();
+  const form = openDlg(isNew ? 'Nouvelle commande' : `Commande n° ${c.numero}`, `
+    <datalist id="dl-clients">${[...clients.values()].map((cl) => `<option value="${esc(cl.nom)}">`).join('')}</datalist>
+    <h3>Client</h3>
+    <div class="grid2">
+      <label>Nom<input name="nom" list="dl-clients" required value="${esc(c.client.nom || '')}" autocomplete="off"></label>
+      <label>Téléphone<input name="tel" type="tel" value="${esc(c.client.tel || '')}"></label>
+    </div>
+    <label>Adresse de livraison<textarea name="adresse" rows="2" placeholder="Rue, NPA localité">${esc(c.client.adresse || '')}</textarea></label>
+    <label>Accès / remarque<input name="acces" value="${esc(c.client.acces || '')}" placeholder="ex. chemin étroit, déposer devant le garage"></label>
+    <h3>Bois commandé</h3>
+    <div id="lignes">${c.lignes.map(ligneRow).join('')}</div>
+    <button type="button" id="add-ligne">+ Ajouter une ligne</button>
+    <h3>Livraison</h3>
+    <div class="grid2">
+      <label>Date prévue<input type="date" name="datePrevue" value="${esc(c.datePrevue || '')}"></label>
+      <label>Prix total CHF<input name="prix" inputmode="decimal" value="${c.prix ?? ''}" placeholder="facultatif"></label>
+    </div>
+    <label>Remarque<textarea name="note" rows="2">${esc(c.note || '')}</textarea></label>
+  `, '<span class="spacer"></span><button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>');
+
+  const box = $('#lignes', form);
+  const bindRow = (row) => {
+    $('[data-rm]', row).onclick = () => { if ($$('.ligne', box).length > 1) row.remove(); else toast('Il faut au moins une ligne'); };
+    $('.f-produit', row).onchange = (e) => { $('.u', row).textContent = unite(parseKey(e.target.value).contenant); };
+  };
+  $$('.ligne', box).forEach(bindRow);
+  $('#add-ligne', form).onclick = () => {
+    const prev = $$('.ligne', box).pop();
+    box.insertAdjacentHTML('beforeend', ligneRow(prev ? parseKey($('.f-produit', prev).value) : {}));
+    bindRow(box.lastElementChild);
+  };
+  form.nom.addEventListener('change', () => {
+    const cl = clients.get(form.nom.value.trim().toLowerCase());
+    if (!cl) return;
+    if (!form.tel.value) form.tel.value = cl.tel || '';
+    if (!form.adresse.value) form.adresse.value = cl.adresse || '';
+    if (!form.acces.value) form.acces.value = cl.acces || '';
+  });
+
+  onSubmit(form, async (f) => {
+    const lignes = $$('.ligne', box).map((row) => ({
+      ...parseKey($('.f-produit', row).value), quantite: round(num($('.f-q', row).value)),
+    })).filter((li) => li.quantite > 0);
+    if (!lignes.length) { toast('Indiquez la quantité commandée'); return; }
+    c.client = { nom: f.nom.trim(), tel: f.tel.trim(), adresse: f.adresse.trim(), acces: f.acces.trim() };
+    c.lignes = lignes;
+    c.datePrevue = f.datePrevue || '';
+    c.prix = String(f.prix).trim() ? num(f.prix) : null;
+    c.note = f.note.trim();
+    if (c.statut === 'a_planifier' || c.statut === 'planifiee') c.statut = c.datePrevue ? 'planifiee' : 'a_planifier';
+    if (isNew) c.numero = nextNumero();
+    await saveCmd(c);
+    toast(isNew ? `Commande n° ${c.numero} enregistrée` : 'Commande modifiée');
+    render();
+    cmdDetail(c);
+  });
+}
+
+function cmdDetail(c) {
+  if (!c) return;
+  const cl = c.client || {};
+  const adr = (cl.adresse || '').replace(/\n/g, ', ');
+  const enCours = c.statut === 'a_planifier' || c.statut === 'planifiee';
+  const form = openDlg(`Commande n° ${c.numero}`, `
+    <p><span class="badge st-${c.statut}">${esc(STATUTS[c.statut])}</span>${c.datePrevue && enCours ? ` 📅 <b>${esc(fmtDay(c.datePrevue))}</b>` : ''}</p>
+    <div class="box">
+      <b>${esc(cl.nom)}</b><br>
+      ${cl.adresse ? `${esc(cl.adresse).replace(/\n/g, '<br>')}<br>` : ''}
+      ${cl.acces ? `<span class="muted">Accès : ${esc(cl.acces)}</span><br>` : ''}
+      <div class="row mt">
+        ${cl.tel ? `<a class="btn" href="tel:${esc(cl.tel.replace(/\s/g, ''))}">📞 ${esc(cl.tel)}</a>` : ''}
+        ${adr ? `<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adr)}">🗺 Itinéraire</a>` : ''}
+      </div>
+    </div>
+    <table class="sum"><thead><tr><th>Bois</th><th>Quantité</th></tr></thead><tbody>
+      ${c.lignes.map((li) => `<tr><td>${esc(plabel(li))}</td><td class="n">${qty(num(li.quantite), li.contenant)}${fmtSt(num(li.quantite), li.contenant)}</td></tr>`).join('')}
+    </tbody></table>
+    ${enCours ? `<p class="tiny">${c.lignes.map((li) => partsText(allocate(pkey(li), num(li.quantite)), li)).join('<br>')}</p>` : ''}
+    ${c.prix ? `<p>Prix : <b>${fmtCHF(c.prix)}</b></p>` : ''}
+    ${c.note ? `<p class="muted">${esc(c.note)}</p>` : ''}
+    ${c.livraison ? `<h3>Livraison du ${fmtDate(c.livraison.date)}</h3>
+      ${c.livraison.signature ? `<p class="tiny muted">Signé par ${esc(c.livraison.signataire || cl.nom)}</p><img class="sig" src="${c.livraison.signature}" alt="Signature">` : ''}
+      ${photoStrip(c.livraison.photos)}` : ''}
+  `, `<button type="button" class="danger" id="b-del">Supprimer</button><span class="spacer"></span>
+      <button type="button" id="b-print">🖨 Bon</button>
+      ${enCours ? '<button type="button" id="b-edit">Modifier</button><button type="button" class="primary" id="b-livrer">✓ Livrer</button>' : ''}
+      ${c.statut === 'livree' ? '<button type="button" id="b-annul">Annuler la livraison</button><button type="button" class="primary" id="b-fact">Marquer facturée</button>' : ''}
+      ${c.statut === 'facturee' ? '<button type="button" id="b-unfact">Remettre à facturer</button>' : ''}`);
+  const on = (id, fn) => { const b = $(id, form); if (b) b.onclick = fn; };
+  on('#b-print', () => printBon(c));
+  on('#b-edit', () => cmdDialog(c));
+  on('#b-livrer', () => livrerDialog(c));
+  on('#b-fact', async () => { c.statut = 'facturee'; await saveCmd(c); render(); cmdDetail(c); });
+  on('#b-unfact', async () => { c.statut = 'livree'; await saveCmd(c); render(); cmdDetail(c); });
+  on('#b-annul', async () => {
+    if (!confirm('Annuler la livraison ? Le bois est remis dans le stock.')) return;
+    await annulerLivraison(c);
+    toast('Livraison annulée, bois remis en stock');
+    render();
+    cmdDetail(c);
+  });
+  on('#b-del', async () => {
+    if (!confirm(`Supprimer la commande n° ${c.numero} ?${c.livraison ? '\nLe bois livré sera remis dans le stock.' : ''}`)) return;
+    if (c.livraison) await annulerLivraison(c);
+    await delCmd(c);
+    dlg().close();
+    cleanPhotos(usedPhotos());
+    render();
+  });
+}
+
+async function annulerLivraison(c) {
+  for (const id of c.livraison?.mvtIds || []) {
+    const m = S.mvts.find((x) => x.id === id);
+    if (!m) continue;
+    const lot = S.lots.find((l) => l.id === m.lotId);
+    if (lot) { lot.quantite = round(lot.quantite - m.delta); await saveLot(lot); await ensureCourant(pkey(lot), { announce: false }); }
+    await delMvt(m);
+  }
+  delete c.livraison;
+  c.statut = c.datePrevue ? 'planifiee' : 'a_planifier';
+  await saveCmd(c);
+}
+
+function partsText({ parts, manque }, li) {
+  const u = unite(li.contenant);
+  const txt = parts.map((pt, i) => `${i ? 'puis ' : '👉 '}<b>${esc(lieuNom(pt.lot.lieu))}</b> : ${fmtQ(pt.q)} ${esc(u)}${pt.lot.role === 'prendre' ? ' (zone en cours)' : ' <span class="alert-txt">(réserve à entamer)</span>'}`);
+  if (manque) txt.push(`<span class="alert-txt">⚠ manque ${fmtQ(manque)} ${esc(u)}</span>`);
+  return `${esc(li.essence)} ${esc(li.longueur)} ${esc(li.contenant)} : ${txt.join(', ') || '<span class="alert-txt">aucun stock</span>'}`;
+}
+
+// Liste de chargement d'un jour : quoi prendre dans quelle zone.
+function chargementDialog(date) {
+  const cmds = S.cmds.filter((c) => c.statut === 'planifiee' && c.datePrevue === date).sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+  const used = new Map();
+  const zones = new Map();
+  const manques = [];
+  for (const c of cmds) {
+    for (const li of c.lignes) {
+      const { parts, manque } = allocate(pkey(li), num(li.quantite), used);
+      for (const pt of parts) {
+        if (!zones.has(pt.lot.lieu)) zones.set(pt.lot.lieu, new Map());
+        const z = zones.get(pt.lot.lieu);
+        const k = pkey(li);
+        if (!z.has(k)) z.set(k, { li, q: 0, clients: [], reserve: pt.lot.role !== 'prendre' });
+        const e = z.get(k);
+        e.q += pt.q;
+        e.clients.push(`${c.client?.nom || '?'} ${fmtQ(pt.q)}`);
+      }
+      if (manque) manques.push(`${qty(manque, li.contenant)} ${plabel(li)} (${c.client?.nom || ''})`);
+    }
+  }
+  const zs = [...zones.entries()].sort((a, b) => zoneIndex(a[0]) - zoneIndex(b[0]));
+  openDlg(`Chargement du ${fmtDate(date, { weekday: 'short', day: 'numeric', month: 'short' })}`, `
+    ${zs.map(([z, items]) => `<div class="box"><h3 class="m0">📍 ${esc(lieuNom(z))}</h3>
+      <ul class="plain">${[...items.values()].map((e) => `<li><b>${qty(e.q, e.li.contenant)}</b> ${esc(plabel(e.li))}${e.reserve ? ' <span class="alert-txt">(réserve à entamer)</span>' : ''}<br><small class="muted">${esc(e.clients.join(' · '))}</small></li>`).join('')}</ul></div>`).join('') || '<p class="hint">Rien à charger.</p>'}
+    ${manques.length ? `<p class="alert">⚠ Stock insuffisant : ${manques.map(esc).join(' ; ')}</p>` : ''}
+    <p class="hint">Calculé d’après les zones « à prendre ». Quand une zone est vide, on continue sur la réserve suivante.</p>`,
+  '<span class="spacer"></span><button type="button" class="primary" data-close>OK</button>');
+}
+
+function livrerDialog(c) {
+  const lotOpts = (li) => {
+    const ls = ordreReserve(lotsCompatibles(li));
+    return '<option value="auto">Automatique – zone en cours</option>'
+      + ls.map((l) => `<option value="${esc(l.id)}">${esc(lieuNom(l.lieu))} · ${l.role === 'prendre' ? 'en cours' : 'réserve'} · ${qty(l.quantite, l.contenant)}</option>`).join('')
+      + '<option value="">— ne pas retirer du stock —</option>';
+  };
+  const form = openDlg(`Livraison n° ${c.numero}`, `
+    <label>Date de livraison<input type="date" name="date" required value="${today()}"></label>
+    <h3>Où prendre le bois</h3>
+    ${c.lignes.map((li, i) => `<div class="box">
+      <b>${qty(num(li.quantite), li.contenant)}</b> ${esc(plabel(li))}
+      <label>Prendre dans<select name="lot${i}" class="f-lot">${lotOpts(li)}</select></label>
+      <p class="tiny" id="prev${i}"></p>
+    </div>`).join('')}
+    <h3>Photo du bois déchargé</h3>
+    <div class="photos" id="pe"></div>
+    <h3>Signature du client</h3>
+    <canvas class="sigpad" id="sig"></canvas>
+    <div class="row"><input name="signataire" placeholder="Nom du signataire" value="${esc(c.client?.nom || '')}"><button type="button" id="sig-clear">Effacer</button></div>
+  `, '<span class="spacer"></span><button type="button" data-close>Annuler</button><button class="primary">✓ Confirmer la livraison</button>');
+  const photos = photoEditor($('#pe', form), []);
+  const pad = signaturePad($('#sig', form));
+  $('#sig-clear', form).onclick = () => pad.clear();
+
+  const plan = () => {
+    const used = new Map();
+    return c.lignes.map((li, i) => {
+      const choix = form[`lot${i}`].value;
+      if (!choix) return { parts: [], manque: 0, aucun: true };
+      return allocate(pkey(li), num(li.quantite), used, choix === 'auto' ? null : choix);
+    });
+  };
+  const preview = () => plan().forEach((r, i) => {
+    $(`#prev${i}`, form).innerHTML = r.aucun ? '<span class="muted">Le stock ne sera pas modifié.</span>' : partsText(r, c.lignes[i]);
+  });
+  $$('.f-lot', form).forEach((sel) => sel.addEventListener('change', preview));
+  preview();
+
+  onSubmit(form, async (f) => {
+    const allocs = plan();
+    const manque = allocs.reduce((n, r) => n + r.manque, 0);
+    if (manque && !confirm('Le stock enregistré ne suffit pas pour cette livraison.\nEnregistrer quand même ? (on retire ce qui est en stock)')) return;
+    const mvtIds = [];
+    const keys = new Set();
+    for (let i = 0; i < c.lignes.length; i++) {
+      for (const pt of allocs[i].parts) {
+        const lot = pt.lot;
+        lot.quantite = Math.max(0, round(lot.quantite - pt.q));
+        if (lot.quantite > 0) lot.entame = true;
+        await saveLot(lot);
+        keys.add(pkey(lot));
+        const m = await saveMvt({ type: 'livraison', date: f.date, lotId: lot.id, delta: -pt.q, commandeId: c.id, client: c.client?.nom, note: `Commande n° ${c.numero}`, ...snap(lot) });
+        mvtIds.push(m.id);
+      }
+    }
+    // Une réserve entamée devient la zone en cours.
+    for (const k of keys) {
+      const ent = S.lots.find((l) => pkey(l) === k && l.entame && l.quantite > 0 && l.role !== 'prendre');
+      if (ent && !lotCourant(k)) await setCourant(ent);
+      await ensureCourant(k);
+    }
+    c.livraison = { date: f.date, mvtIds, photos: [...photos], signature: pad.dataURL(), signataire: f.signataire.trim() };
+    c.statut = 'livree';
+    await saveCmd(c);
+    toast('Livraison enregistrée, stock mis à jour');
+    render();
+    cmdDetail(c);
+  });
+}
+
+function signaturePad(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 300;
+  const h = canvas.clientHeight || 150;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#111';
+  let drawing = false;
+  let has = false;
+  const pos = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  canvas.addEventListener('pointerdown', (e) => { drawing = true; has = true; canvas.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...pos(e)); ctx.lineTo(...pos(e)); ctx.stroke(); });
+  canvas.addEventListener('pointermove', (e) => { if (!drawing) return; ctx.lineTo(...pos(e)); ctx.stroke(); });
+  const end = () => { drawing = false; };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  return {
+    clear: () => { ctx.clearRect(0, 0, w, h); has = false; },
+    dataURL: () => (has ? canvas.toDataURL('image/png') : null),
+  };
+}
+
+async function printBon(c) {
+  const t = S.settings.triage;
+  const cl = c.client || {};
+  const p = $('#print');
+  p.innerHTML = `<div class="bon">
+    <header><img src="img/logo-triage.jpg" alt=""><div><b>${esc(t.nom)}</b><br>${esc(t.adresse).replace(/\n/g, '<br>')}${t.tel ? `<br>Tél. ${esc(t.tel)}` : ''}${t.email ? `<br>${esc(t.email)}` : ''}</div></header>
+    <h1>Bon de livraison n° ${esc(c.numero)}</h1>
+    <div class="bon-grid">
+      <div><small>Client</small><br><b>${esc(cl.nom)}</b><br>${esc(cl.adresse || '').replace(/\n/g, '<br>')}${cl.tel ? `<br>Tél. ${esc(cl.tel)}` : ''}</div>
+      <div><small>Date de livraison</small><br><b>${esc(fmtDate(c.livraison?.date || c.datePrevue || today(), { day: 'numeric', month: 'long', year: 'numeric' }))}</b></div>
+    </div>
+    <table><thead><tr><th>Essence</th><th>Longueur</th><th>Contenant</th><th>Quantité</th></tr></thead><tbody>
+      ${c.lignes.map((li) => `<tr><td>${esc(li.essence)}</td><td>${esc(li.longueur)}</td><td>${esc(li.contenant)}</td><td class="n">${qty(num(li.quantite), li.contenant)}</td></tr>`).join('')}
+    </tbody></table>
+    ${c.prix ? `<p class="total">Total : <b>${fmtCHF(c.prix)}</b></p>` : ''}
+    ${c.note ? `<p>${esc(c.note)}</p>` : ''}
+    <div class="bon-sign">
+      <div><small>Signature du client${c.livraison?.signataire ? ` (${esc(c.livraison.signataire)})` : ''}</small>${c.livraison?.signature ? `<img src="${c.livraison.signature}" alt="">` : '<div class="sign-line"></div>'}</div>
+      <div><small>Livré par</small><div class="sign-line"></div></div>
+    </div>
+  </div>`;
+  await Promise.all($$('img', p).map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
+  window.print();
+}
+
+// ---------------------------------------------------------------- Vue : Place (plan et zones)
+
+function zoneLots(id) { return S.lots.filter((l) => l.lieu === id && l.quantite > 0); }
+
+function zoneStatus(id) {
+  const ls = zoneLots(id);
+  if (ls.some((l) => l.role === 'prendre')) return 'prendre';
+  if (ls.some((l) => l.etat === 'sec')) return 'reserve';
+  if (ls.length) return 'sechage';
+  return 'vide';
+}
+
+const shortProd = (l) => `${l.essence} ${l.longueur.replace(/\s?cm/, '')} ${({ 'Big-bag': 'BB', Ballot: 'ballot', Caisse: 'caisse' })[l.contenant] || l.contenant}`;
+
+function zoneResume(id) {
+  const m = new Map();
+  for (const l of zoneLots(id)) m.set(shortProd(l), (m.get(shortProd(l)) || 0) + l.quantite);
+  return [...m].map(([k, q]) => `${k} : ${fmtQ(q)}`);
+}
+
+function renderPlace() {
+  const s = S.settings;
+  const zones = s.lieux;
+  const placing = S.placing && zones.find((z) => z.id === S.placing);
+  return `
+  <section class="card">
+    <div class="row between"><h2>Plan de la place</h2>
+      <label class="btn small">📷 ${s.plan ? 'Changer le plan' : 'Ajouter un plan'}<input type="file" accept="image/*" id="plan-file" hidden></label></div>
+    ${s.plan ? `
+      ${placing ? `<p class="placing-bar">Touchez le plan à l’endroit de « <b>${esc(placing.nom)}</b> » <button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
+      <div class="plan ${placing ? 'placing' : ''}" id="plan"><img data-photo="${esc(s.plan)}" alt="Plan de la place">
+        ${zones.filter((z) => z.x != null).map((z) => `<button type="button" class="zmark ${zoneStatus(z.id)}" data-zone="${esc(z.id)}" style="left:${z.x}%;top:${z.y}%"><b>${esc(z.nom)}</b>${zoneResume(z.id).slice(0, 3).map((t) => `<small>${esc(t)}</small>`).join('')}</button>`).join('')}
+      </div>
+      <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>`
+    : `<p class="hint">Ajoutez une image de la place du triage : photo prise d’en haut, capture de la photo aérienne sur map.geo.admin.ch, ou photo d’un croquis dessiné à la main. Vous placerez ensuite les zones dessus.</p>`}
+  </section>
+
+  <button class="primary big" id="btn-new-zone">+ Nouvelle zone</button>
+
+  ${zones.map((z) => {
+    const ls = S.lots.filter((l) => l.lieu === z.id && (l.quantite > 0 || S.showEmpty)).sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr'));
+    return `<section class="card zone-card" id="zone-${esc(z.id)}">
+      <div class="row between"><h2><i class="dot ${zoneStatus(z.id)}"></i> ${esc(z.nom)}</h2>
+        <button type="button" class="small" data-zone-edit="${esc(z.id)}">Modifier</button></div>
+      ${z.note ? `<p class="hint">${esc(z.note)}</p>` : ''}
+      <div class="lots">${ls.map(lotCard).join('') || '<p class="hint">Zone vide.</p>'}</div>
+      <button type="button" class="small mt" data-zone-add="${esc(z.id)}">+ Lot dans cette zone</button>
+    </section>`;
+  }).join('')}`;
+}
+
+function bindPlace(root) {
+  $('#plan-file', root).onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    toast('Enregistrement du plan…');
+    S.settings.plan = await storePhoto(f);
+    await saveSettings();
+    cleanPhotos(usedPhotos());
+    render();
+  };
+  const cancel = $('#cancel-place', root);
+  if (cancel) cancel.onclick = () => { S.placing = null; render(); };
+  const plan = $('#plan', root);
+  if (plan) {
+    plan.addEventListener('click', async (e) => {
+      if (S.placing) {
+        const r = $('img', plan).getBoundingClientRect();
+        const z = S.settings.lieux.find((x) => x.id === S.placing);
+        z.x = Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)) * 10) / 10;
+        z.y = Math.round(Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)) * 10) / 10;
+        S.placing = null;
+        await saveSettings();
+        render();
+        return;
+      }
+      const m = e.target.closest('[data-zone]');
+      if (m) {
+        const card = $(`#zone-${CSS.escape(m.dataset.zone)}`, root);
+        card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        card?.classList.add('flash');
+        setTimeout(() => card?.classList.remove('flash'), 1200);
+      }
+    });
+  }
+  $('#btn-new-zone', root).onclick = () => zoneDialog();
+  $$('[data-zone-edit]', root).forEach((b) => b.addEventListener('click', () => zoneDialog(S.settings.lieux.find((z) => z.id === b.dataset.zoneEdit))));
+  $$('[data-zone-add]', root).forEach((b) => b.addEventListener('click', () => lotDialog(null, { lieu: b.dataset.zoneAdd })));
+  bindLots(root);
+}
+
+function zoneDialog(zone) {
+  const isNew = !zone;
+  const zones = S.settings.lieux;
+  const z = zone || { id: uid(), nom: `Zone ${String.fromCharCode(65 + zones.length % 26)}` };
+  const i = zones.indexOf(zone);
+  const form = openDlg(isNew ? 'Nouvelle zone' : `Zone ${z.nom}`, `
+    <label>Nom de la zone<input name="nom" required value="${esc(z.nom)}" placeholder="ex. Zone A, Couvert nord…"></label>
+    <label>Remarque<input name="note" value="${esc(z.note || '')}" placeholder="ex. le long du hangar, accès camion"></label>
+    ${isNew ? '' : `<div class="row">
+      ${S.settings.plan ? '<button type="button" id="z-place">📍 Placer sur le plan</button>' : ''}
+      <button type="button" id="z-up" ${i <= 0 ? 'disabled' : ''}>▲ Monter</button>
+      <button type="button" id="z-down" ${i >= zones.length - 1 ? 'disabled' : ''}>▼ Descendre</button></div>
+      <p class="hint">L’ordre des zones sert aussi à choisir la prochaine réserve à ouvrir (à âge égal).</p>`}
+  `, `${isNew ? '' : '<button type="button" class="danger" id="z-del">Supprimer</button>'}<span class="spacer"></span>
+      <button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>`);
+  onSubmit(form, async (f) => {
+    z.nom = f.nom.trim();
+    z.note = f.note.trim();
+    if (isNew) zones.push(z);
+    await saveSettings();
+    dlg().close();
+    if (isNew && S.settings.plan) { S.placing = z.id; toast('Touchez maintenant le plan pour placer la zone'); }
+    render();
+  });
+  if (isNew) return;
+  const move = async (d) => {
+    zones.splice(i, 1);
+    zones.splice(i + d, 0, z);
+    await saveSettings();
+    dlg().close();
+    render();
+  };
+  const on = (id, fn) => { const b = $(id, form); if (b) b.onclick = fn; };
+  on('#z-up', () => move(-1));
+  on('#z-down', () => move(1));
+  on('#z-place', () => {
+    S.placing = z.id;
+    dlg().close();
+    render();
+    $('#plan')?.scrollIntoView({ behavior: 'smooth' });
+  });
+  on('#z-del', async () => {
+    if (zoneLots(z.id).length) { toast('Cette zone contient encore du bois : videz ou déplacez les lots d’abord.', 4000); return; }
+    if (zones.length <= 1) { toast('Il faut au moins une zone'); return; }
+    if (!confirm(`Supprimer la zone « ${z.nom} » ?`)) return;
+    zones.splice(zones.indexOf(z), 1);
+    S.lots.filter((l) => l.lieu === z.id).forEach((l) => delLot(l));
+    await saveSettings();
+    dlg().close();
+    render();
+  });
+}
+
+// ---------------------------------------------------------------- Vue : Plus (historique, réglages, sauvegarde)
+
+function renderPlus() {
+  const s = S.settings;
+  const mv = S.mvts.filter((m) => !S.fType || m.type === S.fType);
+  return `
+  <section class="card">
+    <h2>Historique des mouvements</h2>
+    <select id="f-type">${options(Object.entries(TYPES).map(([v, t]) => ({ v, t })), S.fType, { empty: 'Tous les mouvements' })}</select>
+    <div class="hist-wrap">${historyList(mv.slice().sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 300).map((m) => ({ ...m, note: [plabel(m), lieuNom(m.lieu), m.note].filter(Boolean).join(' · ') })))}</div>
+  </section>
+
+  <section class="card">
+    <h2>Export pour Excel / comptabilité</h2>
+    <div class="row">
+      <button id="csv-stock">Stock (lots)</button>
+      <button id="csv-mvts">Mouvements</button>
+      <button id="csv-cmds">Commandes</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Catalogue</h2>
+    <form id="form-cat">
+      <h3>Produits vendus</h3>
+      <p class="hint">Seuls ces produits sont proposés dans le stock, les entrées et les commandes.</p>
+      <div id="produits"></div>
+      <div class="box">
+        <div class="grid3">
+          <label>Essence<select id="np-e">${options(s.essences, '')}</select></label>
+          <label>Longueur<select id="np-l">${options(s.longueurs, '')}</select></label>
+          <label>Contenant<select id="np-c">${options(s.contenants.map((c) => c.nom), '')}</select></label>
+        </div>
+        <button type="button" id="add-prod">+ Ajouter ce produit</button>
+      </div>
+      <h3>Listes</h3>
+      <p class="hint">Un élément par ligne. Enregistrez avant d’ajouter un produit avec une nouvelle essence ou longueur. Renommer ne modifie pas les lots déjà enregistrés.</p>
+      <div class="grid2">
+        <label>Essences<textarea name="essences" rows="6">${esc(s.essences.join('\n'))}</textarea></label>
+        <label>Longueurs<textarea name="longueurs" rows="6">${esc(s.longueurs.join('\n'))}</textarea></label>
+      </div>
+      <label>Contenants <small class="muted">(nom = unité = stères, ex. « Caisse = caisse = 0,7 »)</small><textarea name="contenants" rows="4">${esc(s.contenants.map((c) => `${c.nom} = ${c.unite} = ${String(c.steres ?? '').replace('.', ',')}`).join('\n'))}</textarea></label>
+      <p class="hint">Les zones de stockage se gèrent dans l’onglet <b>Place</b>.</p>
+      <label>Entreprises / fournisseurs<textarea name="entreprises" rows="4">${esc(s.entreprises.join('\n'))}</textarea></label>
+      <h3>Coordonnées pour le bon de livraison</h3>
+      <div class="grid2">
+        <label>Nom<input name="t_nom" value="${esc(s.triage.nom)}"></label>
+        <label>Téléphone<input name="t_tel" value="${esc(s.triage.tel)}"></label>
+        <label>Adresse<textarea name="t_adresse" rows="2">${esc(s.triage.adresse)}</textarea></label>
+        <label>E-mail<input name="t_email" value="${esc(s.triage.email || '')}"></label>
+      </div>
+      <button class="primary big">Enregistrer le catalogue</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Copie de secours</h2>
+    <p class="hint">Les données et les photos sont enregistrées <b>uniquement sur cet appareil</b>. Créez régulièrement une copie (Drive, e-mail, clé USB…) pour ne rien perdre et pour passer sur un autre appareil.</p>
+    <div class="row">
+      <button id="btn-backup">⬇ Créer la copie</button>
+      <label class="btn">⬆ Récupérer une copie<input type="file" id="input-import" accept=".json,application/json" hidden></label>
+    </div>
+    <p class="hint" id="storage-info"></p>
+  </section>
+  <p class="hint center">Bois de feu · ${esc(s.triage.nom)}</p>`;
+}
+
+function bindPlus(root) {
+  $('#f-type', root).onchange = (e) => { S.fType = e.target.value; render(); };
+  $$('li[data-mvt]', root).forEach((li) => li.addEventListener('click', () => openMvt(li.dataset.mvt)));
+  $('#csv-stock', root).onclick = () => exportCSV('stock');
+  $('#csv-mvts', root).onclick = () => exportCSV('mouvements');
+  $('#csv-cmds', root).onclick = () => exportCSV('commandes');
+  $('#btn-backup', root).onclick = backup;
+  $('#input-import', root).onchange = (e) => restore(e.target.files[0]);
+
+  const prods = [...S.settings.produits];
+  const box = $('#produits', root);
+  const drawProds = () => {
+    box.innerHTML = prods.map((p, i) => `<div class="prod-row"><span>${esc(p.essence)} ${esc(p.longueur)} · ${esc(p.contenant)}</span><button type="button" class="danger small" data-rm-prod="${i}">Retirer</button></div>`).join('')
+      || '<p class="hint">Aucun produit.</p>';
+    $$('[data-rm-prod]', box).forEach((bt) => bt.addEventListener('click', () => { prods.splice(+bt.dataset.rmProd, 1); drawProds(); }));
+  };
+  drawProds();
+  $('#add-prod', root).onclick = () => {
+    const p = { essence: $('#np-e', root).value, longueur: $('#np-l', root).value, contenant: $('#np-c', root).value };
+    if (prods.some((x) => pkey(x) === pkey(p))) { toast('Ce produit existe déjà'); return; }
+    prods.push(p);
+    drawProds();
+    toast('Produit ajouté – pensez à enregistrer');
+  };
+
+  $('#form-cat', root).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    const lines = (v) => [...new Set(String(v).split('\n').map((x) => x.trim()).filter(Boolean))];
+    const s = S.settings;
+    const ess = lines(f.essences); const lon = lines(f.longueurs);
+    const con = lines(f.contenants).map((x) => { const [nom, u, st] = x.split('='); return { nom: nom.trim(), unite: (u || nom).trim(), steres: num(st) }; });
+    if (!ess.length || !lon.length || !con.length || !prods.length) { toast('Chaque liste doit contenir au moins un élément'); return; }
+    Object.assign(s, { essences: ess, longueurs: lon, contenants: con, produits: prods, entreprises: lines(f.entreprises) });
+    s.triage = { nom: f.t_nom.trim(), tel: f.t_tel.trim(), adresse: f.t_adresse.trim(), email: f.t_email.trim() };
+    await saveSettings();
+    toast('Catalogue enregistré');
+    render();
+  });
+
+  if (navigator.storage?.estimate) {
+    navigator.storage.estimate().then(({ usage, quota }) => {
+      const el = $('#storage-info');
+      if (el) el.textContent = `Espace utilisé sur l’appareil : ${(usage / 1e6).toFixed(1)} Mo${quota ? ` sur ${(quota / 1e9).toFixed(1)} Go disponibles` : ''}.`;
+    });
+  }
+}
+
+function download(name, content, type) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+function exportCSV(kind) {
+  const cell = (v) => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const nb = (n) => (n === null || n === undefined || n === '' ? '' : String(round(n)).replace('.', ','));
+  let rows;
+  if (kind === 'stock') {
+    rows = [['Essence', 'Longueur', 'Contenant', 'Quantité', 'Unité', 'Stères', 'État', 'Zone', 'Utilisation', 'Mis en tas le', 'Provenance', 'Humidité %', 'Remarque']];
+    for (const l of [...S.lots].sort((a, b) => zoneIndex(a.lieu) - zoneIndex(b.lieu))) {
+      rows.push([l.essence, l.longueur, l.contenant, nb(l.quantite), unite(l.contenant), nb(steres(l.quantite, l.contenant)), ETATS[l.etat], lieuNom(l.lieu), l.role === 'prendre' ? 'À prendre' : 'Réserve', l.dateMise, l.provenance, nb(l.humidite), l.note]);
+    }
+  } else if (kind === 'mouvements') {
+    rows = [['Date', 'Type', 'Essence', 'Longueur', 'Contenant', 'Quantité', 'Unité', 'Zone', 'Entreprise / fournisseur', 'Client', 'Prix CHF', 'Remarque']];
+    for (const m of [...S.mvts].sort((a, b) => a.date.localeCompare(b.date))) rows.push([m.date, TYPES[m.type], m.essence, m.longueur, m.contenant, nb(m.delta), unite(m.contenant), lieuNom(m.lieu), m.entreprise, m.client, nb(m.prix), m.note]);
+  } else {
+    rows = [['N°', 'Statut', 'Client', 'Téléphone', 'Adresse', 'Date prévue', 'Date livraison', 'Bois', 'Prix CHF', 'Remarque']];
+    for (const c of [...S.cmds].sort((a, b) => (a.numero || '').localeCompare(b.numero || ''))) {
+      rows.push([c.numero, STATUTS[c.statut], c.client?.nom, c.client?.tel, (c.client?.adresse || '').replace(/\n/g, ', '), c.datePrevue, c.livraison?.date,
+        c.lignes.map((li) => `${fmtQ(num(li.quantite))} ${unite(li.contenant)} ${plabel(li)}`).join(' + '), nb(c.prix), c.note]);
+    }
+  }
+  const csv = `﻿${rows.map((r) => r.map(cell).join(';')).join('\r\n')}`;
+  download(`bois-de-feu_${kind}_${today()}.csv`, csv, 'text/csv;charset=utf-8');
+}
+
+async function backup() {
+  toast('Préparation de la copie…');
+  const photos = [];
+  for (const p of await db.all('photos')) photos.push({ id: p.id, created: p.created, data: await blobToDataURL(p.blob) });
+  const data = { format: 'bois-de-feu', version: 1, date: nowISO(), settings: S.settings, lots: S.lots, mouvements: S.mvts, commandes: S.cmds, photos };
+  download(`copie-secours-bois-de-feu_${today()}.json`, JSON.stringify(data), 'application/json');
+}
+
+async function restore(file) {
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.format !== 'bois-de-feu') throw new Error('fichier non reconnu');
+    if (!confirm(`Remplacer toutes les données de cet appareil par la copie du ${fmtDate(data.date)} ?\n(${data.lots.length} lots, ${data.commandes.length} commandes, ${data.photos.length} photos)`)) return;
+    for (const s of STORE_NAMES) await db.clear(s);
+    for (const p of data.photos) await db.put('photos', { id: p.id, created: p.created, blob: await dataURLToBlob(p.data) });
+    for (const l of data.lots) await db.put('lots', l);
+    for (const m of data.mouvements) await db.put('mouvements', m);
+    for (const c of data.commandes) await db.put('commandes', c);
+    await db.put('kv', { key: 'settings', value: data.settings });
+    await load();
+    toast('Copie récupérée');
+    render();
+  } catch (err) {
+    toast(`Impossible de récupérer la copie : ${err.message}`, 5000);
+  }
+}
+
+// ---------------------------------------------------------------- Rendu principal
+
+const VIEWS = {
+  stock: { title: 'Stock', render: renderStock, bind: bindStock },
+  place: { title: 'Place et zones', render: renderPlace, bind: bindPlace },
+  entrees: { title: 'Entrées de bois', render: renderEntrees, bind: bindEntrees },
+  livraisons: { title: 'Commandes & livraisons', render: renderLivraisons, bind: bindLivraisons },
+  plus: { title: 'Historique & réglages', render: renderPlus, bind: bindPlus },
+};
+
+function render() {
+  const v = VIEWS[S.view];
+  const main = $('#view');
+  const scroll = main.scrollTop;
+  main.innerHTML = v.render();
+  v.bind(main);
+  fillImages(main);
+  main.scrollTop = scroll;
+  $('#view-title').textContent = v.title;
+  $$('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.view === S.view));
+  $('#dl-entreprises').innerHTML = S.settings.entreprises.map((e) => `<option value="${esc(e)}">`).join('');
+  const nbLiv = S.cmds.filter((c) => c.statut === 'planifiee' && c.datePrevue <= today()).length;
+  const badge = $('.tabs [data-view=livraisons] i');
+  badge.textContent = nbLiv || '';
+  badge.hidden = !nbLiv;
+}
+
+function go(view) {
+  S.view = view;
+  if (location.hash !== `#${view}`) history.replaceState(null, '', `#${view}`);
+  $('#view').scrollTop = 0;
+  render();
+}
+
+async function load() {
+  const kv = await db.get('kv', 'settings');
+  S.settings = { ...structuredClone(DEFAULT_SETTINGS), ...(kv?.value || {}) };
+  if ((S.settings.version || 1) < SETTINGS_VERSION) {
+    // Ancien catalogue : remplacé par les produits du triage. Les lieux deviennent des zones.
+    Object.assign(S.settings, DEFAULT_CATALOGUE(), { version: SETTINGS_VERSION });
+  }
+  if (!kv || kv.value.version !== S.settings.version) await saveSettings();
+  [S.lots, S.mvts, S.cmds] = await Promise.all([db.all('lots'), db.all('mouvements'), db.all('commandes')]);
+}
+
+async function start() {
+  await load();
+  $$('.tabs button').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
+  $('#viewer').addEventListener('click', () => $('#viewer').close());
+  const h = location.hash.slice(1);
+  go(VIEWS[h] ? h : 'stock');
+  cleanPhotos(usedPhotos()).catch(() => {});
+  if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+}
+
+start().catch((err) => {
+  console.error(err);
+  document.body.insertAdjacentHTML('beforeend', `<p class="fatal">Erreur au démarrage : ${esc(err.message)}</p>`);
+});

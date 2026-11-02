@@ -1,0 +1,33 @@
+{
+  "name": "Bois de feu – stock et livraisons",
+  "short_name": "Bois de feu",
+  "description": "Stock de bois de feu avec photos, entrées de bois, commandes et livraisons. Triage forestier du Vallon.",
+  "lang": "fr-CH",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#6b3f1d",
+  "icons": [
+    {
+      "src": "icons/logo-vallon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/logo-vallon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/logo-vallon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "./"
+}
