@@ -181,6 +181,10 @@ export function symbolLayer(s, opt = {}) {
     labelMarker(midPoint(pts), `<svg width="14" height="14" viewBox="0 0 14 14"><path d="M8 1L3 8h3.5L5 13l6-8H7.5z" fill="#ffd600" stroke="#111" stroke-width=".8"/></svg>${esc(def.lineLabel)}`, 'tag-elec', inter).addTo(g);
   }
   if (def.measure) labelMarker(midPoint(pts), esc(fmtLen(lengthOf(pts))), 'tag-dist', inter).addTo(g);
-  else if (s.text) labelMarker(midPoint(pts), esc(s.text), 'tag-ouvrage', inter).addTo(g);
+  else if (def.ouvrage) {
+    // Ouvrage en ligne : description + longueur mesurée (ex. « Barrière bois · 24 m »)
+    const len = `<b>${esc(fmtLen(lengthOf(pts)))}</b>`;
+    labelMarker(midPoint(pts), s.text ? `${esc(s.text)} · ${len}` : len, 'tag-ouvrage', inter).addTo(g);
+  } else if (s.text) labelMarker(midPoint(pts), esc(s.text), 'tag-ouvrage', inter).addTo(g);
   return g;
 }
