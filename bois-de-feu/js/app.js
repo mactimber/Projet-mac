@@ -79,7 +79,7 @@ const S = {
   placingGrid: null, // zone en rangées à placer (coin + alignement)
   adjusting: null, // zone en rangées à ajuster
   pas: 0.1,
-  base: 'photo',
+  base: (() => { try { return localStorage.getItem('bf-base') || 'plan'; } catch { return 'plan'; } })(),
   mapView: null,
 };
 
@@ -1382,9 +1382,26 @@ function bindPlace(root) {
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
   const photo = L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
   const carte = L.tileLayer(wmts('ch.swisstopo.pixelkarte-farbe'), { maxNativeZoom: 18, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
-  (S.base === 'carte' ? carte : photo).addTo(map);
-  L.control.layers({ 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
-  map.on('baselayerchange', (e) => { S.base = e.layer === carte ? 'carte' : 'photo'; });
+  // Plan vide : fond blanc + plan cadastral (bâtiments, routes, parcelles), sans les anciens tas de la photo.
+  const cadastre = () => L.tileLayer.wms('https://wms.geo.admin.ch/', {
+    layers: 'ch.kantone.cadastralwebmap-farbe', format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512,
+    maxZoom: 22, opacity: 0.9, crossOrigin: 'anonymous', attribution: '© geo.admin.ch, cadastre', lang: 'fr',
+  });
+  const plan = L.layerGroup([cadastre()]);
+  const pale = L.layerGroup([
+    L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous', opacity: 0.3 }),
+    cadastre(),
+  ]);
+  const bases = { plan, pale, photo, carte };
+  const setFond = (id) => {
+    S.base = id;
+    try { localStorage.setItem('bf-base', id); } catch { /* stockage indisponible */ }
+    map.getContainer().classList.toggle('fond-blanc', id === 'plan' || id === 'pale');
+  };
+  (bases[S.base] || plan).addTo(map);
+  setFond(bases[S.base] ? S.base : 'plan');
+  L.control.layers({ 'Plan vide (bâtiments)': plan, 'Photo pâle': pale, 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
+  map.on('baselayerchange', (e) => setFond(Object.keys(bases).find((k) => bases[k] === e.layer) || 'plan'));
   map.pm.setLang('fr');
 
   const group = L.featureGroup().addTo(map);
