@@ -289,3 +289,14 @@ button.link { border: 0; background: none; text-decoration: underline; min-heigh
 .backup { margin-top: 10px; }
 .backup summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
 .big-check { font-size: 16px; color: var(--text); }
+
+/* Ajustement d'une zone en rangées ------------------------------ */
+.adjust-bar { background: #fff3e0; border-radius: 10px; padding: 8px 10px; margin: 8px 0 0; }
+.adj-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 280px; margin: 8px auto; }
+.adj-grid button { min-height: 46px; font-size: 20px; padding: 0; }
+.adj-grid #adj-pas { font-size: 14px; font-weight: 700; }
+.adj-grid [data-adj=flip] { font-size: 14px; }
+.z-far .zlabel { display: none; }
+.z-mid .zlabel .zl-d { display: none; }
+.z-mid .zlabel { padding: 0 4px; font-size: 10px; border-left-width: 3px; }
+.z-mid .zlabel b { font-size: 11px; }
