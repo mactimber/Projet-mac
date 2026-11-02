@@ -18,7 +18,9 @@ const TYPES = {
 const ENTREE_TYPES = ['facon', 'achat', 'propre', 'initial'];
 const STATUTS = { a_planifier: 'À planifier', planifiee: 'Planifiée', livree: 'Livrée – à facturer', facturee: 'Facturée' };
 
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
+// Dimensions au sol (m) : caisse = palette EUR, big-bag ≈ 1,2 × 1,2, ballot 1 m ≈ 1 × 1.
+const DIMS_DEFAUT = { Caisse: [1.2, 0.8], 'Big-bag': [1.2, 1.2], Ballot: [1, 1] };
 const TOUTES_LONGUEURS = ['1 m', '50 cm', '33 cm', '25 cm'];
 
 // Produits vendus : 1 m en ballots, le reste en big-bags, foyard 25 et 33 aussi en caisses.
@@ -41,9 +43,9 @@ const DEFAULT_CATALOGUE = () => ({
   essences: ['Foyard', 'Mélèze', 'Épicéa', 'Frêne', 'Feuillus indigènes', 'Bouleau'],
   longueurs: [...TOUTES_LONGUEURS],
   contenants: [
-    { nom: 'Ballot', unite: 'ballot', steres: 1 },
-    { nom: 'Big-bag', unite: 'bb', steres: 1 },
-    { nom: 'Caisse', unite: 'caisse', steres: 0.7 },
+    { nom: 'Ballot', unite: 'ballot', steres: 1, dims: [1, 1] },
+    { nom: 'Big-bag', unite: 'bb', steres: 1, dims: [1.2, 1.2] },
+    { nom: 'Caisse', unite: 'caisse', steres: 0.7, dims: [1.2, 0.8] },
   ],
   produits: defaultProduits(),
 });
@@ -52,6 +54,7 @@ const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION,
   ...DEFAULT_CATALOGUE(),
   lieux: [{ id: 'zA', nom: 'Zone A' }],
+  ecartZones: 0.5, // espace habituel entre deux zones (m)
   livraisons: false, // module commandes / livraisons (désactivé pour l'instant)
   entreprises: [],
   seuils: {},
@@ -73,6 +76,9 @@ const S = {
   fType: '',
   drawing: null, // zone en cours de dessin sur la carte
   editing: null, // zone dont on corrige le contour
+  placingGrid: null, // zone en rangées à placer (coin + alignement)
+  adjusting: null, // zone en rangées à ajuster
+  pas: 0.1,
   base: 'photo',
   mapView: null,
 };
@@ -1171,20 +1177,107 @@ function surface(ring) {
   return Math.abs(a / 2);
 }
 
+// ---- Zones en rangées de contenants (géométrie en mètres autour d'un coin de départ)
+// grid = { contenant, cols (dans la ligne), rows (lignes), etages, gap (m entre contenants),
+//          sens ('long' | 'large'), origin [lat, lng], angle (° depuis le nord, sens horaire), side (1 = à droite, -1 = à gauche) }
+
+const M_LAT = 111320;
+const offsetLL = ([lat, lng], e, n) => [lat + n / M_LAT, lng + e / (M_LAT * Math.cos(lat * Math.PI / 180))];
+const bearing = (a, b) => {
+  const e = (b[1] - a[1]) * M_LAT * Math.cos(a[0] * Math.PI / 180);
+  const n = (b[0] - a[0]) * M_LAT;
+  return Math.atan2(e, n) * 180 / Math.PI;
+};
+const fmtM = (m) => `${fmtQ(Math.round(m * 100) / 100)} m`;
+const contDims = (nom) => (S.settings.contenants.find((c) => c.nom === nom) || {}).dims || [1, 1];
+
+function gridSize(g) {
+  const [a, b] = contDims(g.contenant);
+  const w = g.sens === 'large' ? Math.min(a, b) : Math.max(a, b);
+  const d = g.sens === 'large' ? Math.max(a, b) : Math.min(a, b);
+  const gap = g.gap || 0;
+  return { w, d, gap, L: g.cols * w + (g.cols - 1) * gap, D: g.rows * d + (g.rows - 1) * gap };
+}
+
+function gridPos(g, u, v) {
+  const t = g.angle * Math.PI / 180;
+  const s = g.side || 1;
+  return offsetLL(g.origin, u * Math.sin(t) + v * s * Math.cos(t), u * Math.cos(t) - v * s * Math.sin(t));
+}
+
+const fixLL = (p) => [+p[0].toFixed(8), +p[1].toFixed(8)];
+
+function gridRing(g) {
+  const { L, D } = gridSize(g);
+  return [gridPos(g, 0, 0), gridPos(g, L, 0), gridPos(g, L, D), gridPos(g, 0, D)].map(fixLL);
+}
+
+function gridUnits(g) {
+  const { w, d, gap } = gridSize(g);
+  const out = [];
+  for (let i = 0; i < g.cols; i++) {
+    for (let j = 0; j < g.rows; j++) {
+      const u = i * (w + gap);
+      const v = j * (d + gap);
+      out.push([gridPos(g, u, v), gridPos(g, u + w, v), gridPos(g, u + w, v + d), gridPos(g, u, v + d)]);
+    }
+  }
+  return out;
+}
+
+const pluriel = (contenant) => `${contenant.toLowerCase()}s`;
+const capacite = (g) => g.cols * g.rows * (g.etages || 1);
+
+function gridText(g) {
+  const { L, D } = gridSize(g);
+  const cap = capacite(g);
+  return `${g.cols} × ${g.rows} ${pluriel(g.contenant)}${g.etages > 1 ? ` × ${g.etages} étages` : ''} · ${fmtM(L)} × ${fmtM(D)} · capacité ${cap} ${pluriel(g.contenant)}${fmtSt(cap, g.contenant)}`;
+}
+
+function occupation(z) {
+  if (!z.grid) return '';
+  const n = zoneLots(z.id).filter((l) => l.contenant === z.grid.contenant).reduce((s, l) => s + l.quantite, 0);
+  const cap = capacite(z.grid);
+  return `${fmtQ(n)} / ${cap}`;
+}
+
+// Place la nouvelle zone à côté d'une autre, en laissant `ecart` mètres.
+function gridApres(g, ref, ou, ecart) {
+  const rg = ref.grid;
+  const { L, D } = gridSize(rg);
+  const pos = ou === 'derriere' ? gridPos(rg, 0, D + ecart) : ou === 'devant' ? gridPos(rg, 0, -ecart - gridSize({ ...g, angle: rg.angle }).D) : gridPos(rg, L + ecart, 0);
+  return { ...g, origin: fixLL(pos), angle: rg.angle, side: rg.side || 1 };
+}
+
+// ---------------------------------------------------------------- Vue : carte et zones
+
 function renderPlace() {
   const zones = S.settings.lieux;
   const drawing = S.drawing && zones.find((z) => z.id === S.drawing);
   const editing = S.editing && zones.find((z) => z.id === S.editing);
+  const placing = S.placingGrid && zones.find((z) => z.id === S.placingGrid);
+  const adjusting = S.adjusting && zones.find((z) => z.id === S.adjusting);
   const sansContour = zones.filter((z) => !z.ring);
+  const pas = S.pas || 0.1;
   return `
   <section class="card map-card">
     <div class="row between"><h2>Secteur du bois de feu</h2>
       <span class="row"><button type="button" class="small" id="btn-gps">◎ Ma position</button><button type="button" class="small" id="btn-fit">⤢ Tout voir</button></span></div>
     ${drawing ? `<p class="placing-bar"><span>Dessin de « <b>${esc(drawing.nom)}</b> » : touchez chaque coin, puis le premier point pour fermer.</span><button type="button" class="small" id="cancel-draw">Annuler</button></p>` : ''}
     ${editing ? `<p class="placing-bar"><span>Glissez les points de « <b>${esc(editing.nom)}</b> » pour corriger le contour.</span><button type="button" class="small primary" id="end-edit">Terminer</button></p>` : ''}
-    <div id="zmap" class="zmap ${drawing ? 'placing' : ''}"></div>
+    ${placing ? `<p class="placing-bar"><span id="placing-txt">« <b>${esc(placing.nom)}</b> » : touchez le <b>coin de départ</b> de la première ligne.</span><button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
+    ${adjusting ? `<div class="adjust-bar">
+        <div class="row between"><span>Ajuster « <b>${esc(adjusting.nom)}</b> »</span><button type="button" class="small primary" id="adj-end">✓ Terminer</button></div>
+        <div class="adj-grid">
+          <button type="button" data-adj="rotl" title="Tourner à gauche">⟲</button><button type="button" data-adj="n">▲</button><button type="button" data-adj="rotr" title="Tourner à droite">⟳</button>
+          <button type="button" data-adj="w">◀</button><button type="button" id="adj-pas">${pas < 1 ? `${pas * 100} cm` : '1 m'}</button><button type="button" data-adj="e">▶</button>
+          <button type="button" data-adj="flip" title="Lignes de l’autre côté">⇅ côté</button><button type="button" data-adj="s">▼</button><span></span>
+        </div>
+        <p class="hint m0">Flèches : déplacer de ${pas < 1 ? `${pas * 100} cm` : '1 m'} (toucher le pas pour le changer). ⟲ ⟳ : tourner de ${pas < 0.5 ? '0,5' : pas < 1 ? '2' : '5'}°.</p>
+      </div>` : ''}
+    <div id="zmap" class="zmap ${drawing || placing ? 'placing' : ''}"></div>
     <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>
-    ${sansContour.length && !drawing ? `<p class="hint">Pas encore dessinée${sansContour.length > 1 ? 's' : ''} : ${sansContour.map((z) => `<button type="button" class="link" data-draw="${esc(z.id)}">${esc(z.nom)}</button>`).join(', ')}</p>` : ''}
+    ${sansContour.length && !drawing && !placing ? `<p class="hint">Pas encore placée${sansContour.length > 1 ? 's' : ''} sur la carte : ${sansContour.map((z) => `<button type="button" class="link" data-zone-edit="${esc(z.id)}">${esc(z.nom)}</button>`).join(', ')}</p>` : ''}
     <details class="backup"><summary>Carte sans réseau</summary>
       <p class="hint">Centrez la carte sur le secteur, puis enregistrez-la : elle restera disponible sans réseau.</p>
       <button type="button" id="btn-offline">⬇ Enregistrer cette partie de la carte</button>
@@ -1199,58 +1292,80 @@ function renderPlace() {
     const m2 = surface(z.ring);
     return `<section class="card zone-card" id="zone-${esc(z.id)}">
       <div class="row between"><h2><i class="dot ${zoneStatus(z.id)}"></i> ${esc(z.nom)}</h2>
-        <span class="row">${z.ring ? `<button type="button" class="small" data-show="${esc(z.id)}">🗺 Voir</button>` : `<button type="button" class="small" data-draw="${esc(z.id)}">✏ Dessiner</button>`}
+        <span class="row">${z.ring ? `<button type="button" class="small" data-show="${esc(z.id)}">🗺 Voir</button>` : ''}
         <button type="button" class="small" data-zone-edit="${esc(z.id)}">Modifier</button></span></div>
-      ${z.note || m2 ? `<p class="hint">${esc(z.note || '')}${z.note && m2 ? ' · ' : ''}${m2 ? `≈ ${Math.round(m2)} m²` : ''}</p>` : ''}
+      ${z.grid ? `<p class="tiny">${esc(gridText(z.grid))}<br><b>Occupé : ${occupation(z)} ${esc(pluriel(z.grid.contenant))}</b></p>` : ''}
+      ${z.note || (m2 && !z.grid) ? `<p class="hint">${esc(z.note || '')}${z.note && m2 && !z.grid ? ' · ' : ''}${m2 && !z.grid ? `≈ ${Math.round(m2)} m²` : ''}</p>` : ''}
       <div class="lots">${ls.map(lotCard).join('') || '<p class="hint">Zone vide.</p>'}</div>
       <button type="button" class="small mt" data-zone-add="${esc(z.id)}">+ Lot dans cette zone</button>
     </section>`;
   }).join('')}`;
 }
 
+let unitLayers = {};
+
+function drawZone(z, group, root) {
+  if (zoneLayers[z.id]) { group.removeLayer(zoneLayers[z.id]); delete zoneLayers[z.id]; }
+  if (unitLayers[z.id]) { group.removeLayer(unitLayers[z.id]); delete unitLayers[z.id]; }
+  if (!z.ring) return;
+  const st = zoneStatus(z.id);
+  const actif = S.adjusting === z.id;
+  const poly = L.polygon(z.ring, { color: actif ? '#ffeb3b' : '#fff', weight: actif ? 3 : 2, fillColor: ZONE_COLORS[st], fillOpacity: z.grid ? 0.25 : 0.55 }).addTo(group);
+  if (z.grid) {
+    unitLayers[z.id] = L.featureGroup(gridUnits(z.grid).map((r) => L.polygon(r, { color: '#fff', weight: 1, opacity: 0.9, fillColor: ZONE_COLORS[st], fillOpacity: 0.45, interactive: false }))).addTo(group);
+    poly.bringToFront();
+  }
+  const occ = z.grid ? `<span class="zl-d"><br>${occupation(z)} ${esc(pluriel(z.grid.contenant))}</span>` : '';
+  poly.bindTooltip(`<b>${esc(z.nom)}</b>${occ}<span class="zl-d">${zoneResume(z.id).slice(0, 3).map((t) => `<br>${esc(t)}`).join('')}</span>`, { permanent: true, direction: 'center', className: `zlabel ${st}` });
+  poly.on('click', () => {
+    if (S.drawing || S.editing || S.placingGrid || S.adjusting) return;
+    const card = $(`#zone-${CSS.escape(z.id)}`, root);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card?.classList.add('flash');
+    setTimeout(() => card?.classList.remove('flash'), 1200);
+  });
+  zoneLayers[z.id] = poly;
+}
+
 function bindPlace(root) {
   const zones = S.settings.lieux;
-  map = L.map($('#zmap', root), { maxZoom: 21, minZoom: 8, zoomControl: true });
+  unitLayers = {};
+  map = L.map($('#zmap', root), { maxZoom: 22, minZoom: 8, zoomControl: true });
   map.attributionControl.setPrefix(false);
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
-  const photo = L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 21, attribution: ATTR, crossOrigin: 'anonymous' });
-  const carte = L.tileLayer(wmts('ch.swisstopo.pixelkarte-farbe'), { maxNativeZoom: 18, maxZoom: 21, attribution: ATTR, crossOrigin: 'anonymous' });
+  const photo = L.tileLayer(wmts('ch.swisstopo.swissimage'), { maxNativeZoom: 20, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
+  const carte = L.tileLayer(wmts('ch.swisstopo.pixelkarte-farbe'), { maxNativeZoom: 18, maxZoom: 22, attribution: ATTR, crossOrigin: 'anonymous' });
   (S.base === 'carte' ? carte : photo).addTo(map);
   L.control.layers({ 'Photo aérienne': photo, Carte: carte }, null, { position: 'topright' }).addTo(map);
   map.on('baselayerchange', (e) => { S.base = e.layer === carte ? 'carte' : 'photo'; });
   map.pm.setLang('fr');
 
   const group = L.featureGroup().addTo(map);
-  for (const z of zones) {
-    if (!z.ring) continue;
-    const st = zoneStatus(z.id);
-    const poly = L.polygon(z.ring, { color: '#fff', weight: 2, fillColor: ZONE_COLORS[st], fillOpacity: 0.55 }).addTo(group);
-    poly.bindTooltip(`<b>${esc(z.nom)}</b>${zoneResume(z.id).slice(0, 4).map((t) => `<br>${esc(t)}`).join('')}`, { permanent: true, direction: 'center', className: `zlabel ${st}` });
-    poly.on('click', () => {
-      if (S.drawing || S.editing) return;
-      const card = $(`#zone-${CSS.escape(z.id)}`, root);
-      card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      card?.classList.add('flash');
-      setTimeout(() => card?.classList.remove('flash'), 1200);
-    });
-    zoneLayers[z.id] = poly;
-  }
+  for (const z of zones) drawZone(z, group, root);
   const fitAll = () => {
-    if (group.getLayers().length) map.fitBounds(group.getBounds().pad(0.25), { maxZoom: 19 });
+    if (group.getLayers().length) map.fitBounds(group.getBounds().pad(0.25), { maxZoom: 20 });
     else map.setView(RECHY, 16);
   };
-  if (S.mapView) map.setView(S.mapView.c, S.mapView.z); else fitAll();
+  if (S.focusRing) { map.fitBounds(L.polygon(S.focusRing).getBounds().pad(0.25), { maxZoom: 22 }); S.focusRing = null; } else if (S.mapView) map.setView(S.mapView.c, S.mapView.z); else fitAll();
+  const zoomCls = () => {
+    const c = map.getContainer().classList;
+    const zm = map.getZoom();
+    c.toggle('z-far', zm < 18);
+    c.toggle('z-mid', zm >= 18 && zm < 21);
+  };
+  map.on('zoomend', zoomCls);
+  zoomCls();
   setTimeout(() => map && map.invalidateSize(), 50);
 
   $('#btn-fit', root).onclick = fitAll;
   $('#btn-gps', root).onclick = () => {
     toast('Recherche de la position…');
-    map.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+    map.locate({ setView: true, maxZoom: 19, enableHighAccuracy: true });
   };
   map.on('locationfound', (e) => { L.circleMarker(e.latlng, { radius: 7, color: '#fff', weight: 2, fillColor: '#1976d2', fillOpacity: 1 }).addTo(map); });
   map.on('locationerror', () => toast('Position introuvable (GPS désactivé ?)'));
 
-  // Dessin d'une zone
+  // Dessin libre d'une zone
   if (S.drawing) {
     map.pm.enableDraw('Polygon', {
       pathOptions: { color: '#ffeb3b', weight: 3, fillOpacity: 0.3 },
@@ -1264,12 +1379,12 @@ function bindPlace(root) {
       const ring = e.layer.getLatLngs()[0].map((ll) => [+ll.lat.toFixed(7), +ll.lng.toFixed(7)]);
       map.removeLayer(e.layer);
       S.drawing = null;
-      if (z) { z.ring = ring; await saveSettings(); toast(`« ${z.nom} » dessinée`); }
+      if (z) { z.ring = ring; delete z.grid; await saveSettings(); toast(`« ${z.nom} » dessinée`); }
       render();
     });
     $('#cancel-draw', root).onclick = () => { map.pm.disableDraw(); S.drawing = null; render(); };
   }
-  // Correction d'un contour
+  // Correction d'un contour libre
   if (S.editing && zoneLayers[S.editing]) {
     const poly = zoneLayers[S.editing];
     poly.closeTooltip();
@@ -1284,12 +1399,75 @@ function bindPlace(root) {
       render();
     };
   }
+  // Placement d'une zone en rangées : coin de départ puis direction de la ligne
+  if (S.placingGrid) {
+    const z = zones.find((x) => x.id === S.placingGrid);
+    let a = null;
+    let mk = null;
+    let guide = null;
+    map.on('click', async (e) => {
+      const p = [e.latlng.lat, e.latlng.lng];
+      if (!a) {
+        a = p;
+        mk = L.circleMarker(e.latlng, { radius: 7, color: '#000', weight: 2, fillColor: '#ffeb3b', fillOpacity: 1 }).addTo(map);
+        $('#placing-txt', root).innerHTML = `« <b>${esc(z.nom)}</b> » : touchez maintenant un <b>2ᵉ point dans l’alignement</b> de la ligne (plus il est loin, plus c’est précis).`;
+        map.on('mousemove', (ev) => {
+          if (guide) map.removeLayer(guide);
+          guide = L.polyline([e.latlng, ev.latlng], { color: '#ffeb3b', dashArray: '6 6', weight: 3, interactive: false }).addTo(map);
+        });
+        return;
+      }
+      if (Math.abs(p[0] - a[0]) + Math.abs(p[1] - a[1]) < 1e-7) return;
+      map.off('mousemove');
+      if (mk) map.removeLayer(mk);
+      if (guide) map.removeLayer(guide);
+      z.grid = { ...z.grid, origin: fixLL(a), angle: Math.round(bearing(a, p) * 10) / 10, side: z.grid.side || 1 };
+      z.ring = gridRing(z.grid);
+      await saveSettings();
+      S.placingGrid = null;
+      S.adjusting = z.id;
+      S.focusRing = z.ring;
+      toast('Zone placée : ajustez si besoin, puis Terminer');
+      render();
+    });
+    $('#cancel-place', root).onclick = () => { S.placingGrid = null; render(); };
+  }
+  // Ajustement fin d'une zone en rangées
+  if (S.adjusting) {
+    const z = zones.find((x) => x.id === S.adjusting);
+    zoneLayers[z.id]?.closeTooltip();
+    $$('[data-adj]', root).forEach((b) => b.addEventListener('click', () => {
+      const pas = S.pas || 0.1;
+      const g = z.grid;
+      const rot = pas < 0.5 ? 0.5 : pas < 1 ? 2 : 5;
+      const mv = { n: [0, pas], s: [0, -pas], e: [pas, 0], w: [-pas, 0] }[b.dataset.adj];
+      if (mv) g.origin = fixLL(offsetLL(g.origin, mv[0], mv[1]));
+      if (b.dataset.adj === 'rotl' || b.dataset.adj === 'rotr') {
+        // Tourne autour du centre de la zone
+        const { L: lg, D } = gridSize(g);
+        const c = gridPos(g, lg / 2, D / 2);
+        g.angle = (g.angle + (b.dataset.adj === 'rotr' ? rot : -rot) + 360) % 360;
+        const c2 = gridPos(g, lg / 2, D / 2);
+        g.origin = fixLL(offsetLL(g.origin, (c[1] - c2[1]) * M_LAT * Math.cos(c[0] * Math.PI / 180), (c[0] - c2[0]) * M_LAT));
+      }
+      if (b.dataset.adj === 'flip') g.side = -(g.side || 1);
+      z.ring = gridRing(g);
+      drawZone(z, group, root);
+      zoneLayers[z.id]?.closeTooltip();
+    }));
+    $('#adj-pas', root).onclick = () => { S.pas = { 0.1: 0.5, 0.5: 1, 1: 0.1 }[S.pas || 0.1]; S.mapView = { c: map.getCenter(), z: map.getZoom() }; render(); };
+    $('#adj-end', root).onclick = async () => {
+      S.adjusting = null;
+      await saveSettings();
+      toast('Position enregistrée');
+      render();
+    };
+  }
 
-  $$('[data-draw]', root).forEach((b) => b.addEventListener('click', () => startDraw(b.dataset.draw)));
   $$('[data-show]', root).forEach((b) => b.addEventListener('click', () => {
     const poly = zoneLayers[b.dataset.show];
     if (!poly) return;
-    map.fitBounds(poly.getBounds().pad(0.6), { maxZoom: 20 });
+    map.fitBounds(poly.getBounds().pad(0.25), { maxZoom: 22 });
     $('#zmap').scrollIntoView({ behavior: 'smooth' });
   }));
   $('#btn-offline', root).onclick = saveOfflineTiles;
@@ -1300,8 +1478,14 @@ function bindPlace(root) {
 }
 
 function startDraw(id) {
-  S.drawing = id;
-  S.editing = null;
+  Object.assign(S, { drawing: id, editing: null, placingGrid: null, adjusting: null });
+  render();
+  $('#zmap')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+function startMode(mode, id, focusRing) {
+  Object.assign(S, { drawing: null, editing: null, placingGrid: null, adjusting: null, [mode]: id });
+  if (focusRing) S.focusRing = focusRing;
   render();
   $('#zmap')?.scrollIntoView({ behavior: 'smooth' });
 }
@@ -1363,25 +1547,99 @@ function zoneDialog(zone) {
   const zones = S.settings.lieux;
   const z = zone || { id: uid(), nom: `Zone ${String.fromCharCode(65 + (zones.length % 26))}` };
   const i = zones.indexOf(zone);
+  const conts = S.settings.contenants.filter((c) => c.dims);
+  const last = [...zones].reverse().find((x) => x.grid && x.id !== z.id);
+  const g = z.grid || { contenant: last?.grid.contenant || conts[0]?.nom, cols: '', rows: '', etages: 1, gap: 0, sens: 'long' };
+  const forme = z.grid || isNew ? 'grille' : (z.ring ? 'libre' : 'grille');
+  const voisines = zones.filter((x) => x.grid?.origin && x.id !== z.id);
+  const ecart = String(S.settings.ecartZones ?? 0.5).replace('.', ',');
   const form = openDlg(isNew ? 'Nouvelle zone' : `Zone ${z.nom}`, `
     <label>Nom de la zone<input name="nom" required value="${esc(z.nom)}" placeholder="ex. Zone A, Place du hangar…"></label>
     <label>Remarque<input name="note" value="${esc(z.note || '')}" placeholder="ex. derrière le hangar, accès camion"></label>
-    ${isNew ? '<p class="hint">Après l’enregistrement, vous dessinerez le contour de la zone sur la carte.</p>' : `<div class="row">
-      <button type="button" id="z-draw">✏ ${z.ring ? 'Redessiner' : 'Dessiner sur la carte'}</button>
-      ${z.ring ? '<button type="button" id="z-edit">Corriger le contour</button>' : ''}</div>
+    <label>Forme de la zone<select name="forme">
+      <option value="grille"${forme === 'grille' ? ' selected' : ''}>Rangées de contenants (caisses, big-bags…)</option>
+      <option value="libre"${forme === 'libre' ? ' selected' : ''}>Dessin libre sur la carte</option></select></label>
+    <div id="f-grille">
+      <div class="grid2">
+        <label>Contenant<select name="contenant">${options(conts.map((c) => ({ v: c.nom, t: `${c.nom} (${fmtQ(c.dims[0])} × ${fmtQ(c.dims[1])} m)` })), g.contenant)}</select></label>
+        <label>Pose dans la ligne<select name="sens">
+          <option value="long"${g.sens !== 'large' ? ' selected' : ''}>Côté long dans la ligne</option>
+          <option value="large"${g.sens === 'large' ? ' selected' : ''}>Côté court dans la ligne</option></select></label>
+        <label>Nombre dans une ligne<input name="cols" inputmode="numeric" value="${g.cols}" placeholder="ex. 8"></label>
+        <label>Nombre de lignes<input name="rows" inputmode="numeric" value="${g.rows}" placeholder="ex. 2"></label>
+        <label>Étages (empilés)<input name="etages" inputmode="numeric" value="${g.etages || 1}"></label>
+        <label>Espace entre contenants (m)<input name="gap" inputmode="decimal" value="${String(g.gap || 0).replace('.', ',')}"></label>
+      </div>
+      <p class="box tiny" id="g-info"></p>
+      <label>Emplacement sur la carte<select name="place">
+        ${g.origin ? '<option value="garder">Garder la position actuelle</option>' : ''}
+        <option value="tap">Toucher 2 points sur la carte (coin + alignement)</option>
+        ${voisines.map((v) => `<option value="apres:${esc(v.id)}">À la suite de « ${esc(v.nom)} » (même ligne)</option><option value="derriere:${esc(v.id)}">Derrière « ${esc(v.nom)} »</option><option value="devant:${esc(v.id)}">Devant « ${esc(v.nom)} »</option>`).join('')}
+      </select></label>
+      <label id="l-ecart">Espace avec la zone voisine (m)<input name="ecart" inputmode="decimal" value="${ecart}"></label>
+    </div>
+    ${isNew ? '' : `<div class="row mt">
+      <button type="button" id="z-adjust" ${z.grid?.origin ? '' : 'hidden'}>✥ Ajuster la position</button>
+      <button type="button" id="z-draw">✏ ${z.ring && !z.grid ? 'Redessiner' : 'Dessiner librement'}</button>
+      ${z.ring && !z.grid ? '<button type="button" id="z-edit">Corriger le contour</button>' : ''}</div>
       <div class="row mt">
       <button type="button" id="z-up" ${i <= 0 ? 'disabled' : ''}>▲ Monter</button>
       <button type="button" id="z-down" ${i >= zones.length - 1 ? 'disabled' : ''}>▼ Descendre</button></div>
       <p class="hint">L’ordre des zones sert aussi à choisir la prochaine réserve à ouvrir (à âge égal).</p>`}
   `, `${isNew ? '' : '<button type="button" class="danger" id="z-del">Supprimer</button>'}<span class="spacer"></span>
-      <button type="button" data-close>Annuler</button><button class="primary">${isNew ? 'Enregistrer et dessiner' : 'Enregistrer'}</button>`);
+      <button type="button" data-close>Annuler</button><button class="primary">Enregistrer</button>`);
+
+  const readGrid = () => ({
+    ...(z.grid || {}),
+    contenant: form.contenant.value, sens: form.sens.value,
+    cols: Math.max(1, Math.round(num(form.cols.value))), rows: Math.max(1, Math.round(num(form.rows.value))),
+    etages: Math.max(1, Math.round(num(form.etages.value) || 1)), gap: Math.max(0, num(form.gap.value)),
+  });
+  const refresh = () => {
+    const libre = form.forme.value === 'libre';
+    $('#f-grille', form).hidden = libre;
+    $('#l-ecart', form).hidden = !/^(apres|derriere|devant):/.test(form.place.value);
+    $('#g-info', form).textContent = num(form.cols.value) && num(form.rows.value) ? gridText(readGrid()) : 'Indiquez le nombre de contenants dans une ligne et le nombre de lignes.';
+  };
+  form.addEventListener('input', refresh);
+  form.addEventListener('change', refresh);
+  refresh();
+
   onSubmit(form, async (f) => {
     z.nom = f.nom.trim();
     z.note = f.note.trim();
     if (isNew) zones.push(z);
-    await saveSettings();
+    if (f.forme === 'libre') {
+      const hadGrid = !!z.grid;
+      delete z.grid;
+      if (hadGrid) delete z.ring;
+      await saveSettings();
+      dlg().close();
+      if (!z.ring) startDraw(z.id); else render();
+      return;
+    }
+    if (!num(f.cols) || !num(f.rows)) { toast('Indiquez le nombre de contenants et de lignes'); return; }
+    const ng = readGrid();
+    const ec = Math.max(0, num(f.ecart));
+    S.settings.ecartZones = ec;
+    const [mode, refId] = f.place.split(':');
     dlg().close();
-    if (isNew) startDraw(z.id); else render();
+    if (mode === 'garder' && ng.origin) {
+      z.grid = ng;
+      z.ring = gridRing(ng);
+      await saveSettings();
+      render();
+    } else if (refId) {
+      z.grid = gridApres(ng, zones.find((x) => x.id === refId), mode, ec);
+      z.ring = gridRing(z.grid);
+      await saveSettings();
+      startMode('adjusting', z.id, z.ring);
+      toast('Zone placée : ajustez si besoin, puis Terminer');
+    } else {
+      z.grid = ng;
+      await saveSettings();
+      startMode('placingGrid', z.id);
+    }
   });
   if (isNew) return;
   const move = async (d) => {
@@ -1394,15 +1652,9 @@ function zoneDialog(zone) {
   const on = (id, fn) => { const b = $(id, form); if (b) b.onclick = fn; };
   on('#z-up', () => move(-1));
   on('#z-down', () => move(1));
+  on('#z-adjust', () => { dlg().close(); startMode('adjusting', z.id, z.ring); });
   on('#z-draw', () => { dlg().close(); startDraw(z.id); });
-  on('#z-edit', () => {
-    dlg().close();
-    S.editing = z.id;
-    S.drawing = null;
-    if (zoneLayers[z.id] && map) S.mapView = { c: zoneLayers[z.id].getBounds().getCenter(), z: Math.max(map.getZoom(), 18) };
-    render();
-    $('#zmap')?.scrollIntoView({ behavior: 'smooth' });
-  });
+  on('#z-edit', () => { dlg().close(); startMode('editing', z.id, z.ring); });
   on('#z-del', async () => {
     if (zoneLots(z.id).length) { toast('Cette zone contient encore du bois : videz ou déplacez les lots d’abord.', 4000); return; }
     if (!confirm(`Supprimer la zone « ${z.nom} » ?`)) return;
@@ -1461,7 +1713,7 @@ function renderPlus() {
         <label>Essences<textarea name="essences" rows="6">${esc(s.essences.join('\n'))}</textarea></label>
         <label>Longueurs<textarea name="longueurs" rows="6">${esc(s.longueurs.join('\n'))}</textarea></label>
       </div>
-      <label>Contenants <small class="muted">(nom = unité = stères, ex. « Caisse = caisse = 0,7 »)</small><textarea name="contenants" rows="4">${esc(s.contenants.map((c) => `${c.nom} = ${c.unite} = ${String(c.steres ?? '').replace('.', ',')}`).join('\n'))}</textarea></label>
+      <label>Contenants <small class="muted">(nom = unité = stères = dimensions au sol en m, ex. « Caisse = caisse = 0,7 = 1,2 x 0,8 »)</small><textarea name="contenants" rows="4">${esc(s.contenants.map((c) => `${c.nom} = ${c.unite} = ${String(c.steres ?? '').replace('.', ',')}${c.dims ? ` = ${String(c.dims[0]).replace('.', ',')} x ${String(c.dims[1]).replace('.', ',')}` : ''}`).join('\n'))}</textarea></label>
       <p class="hint">Les zones de stockage se dessinent dans l’onglet <b>Zones</b>.</p>
       <label>Entreprises / fournisseurs<textarea name="entreprises" rows="4">${esc(s.entreprises.join('\n'))}</textarea></label>
       <h3>Coordonnées pour le bon de livraison</h3>
@@ -1530,9 +1782,14 @@ function bindPlus(root) {
     const lines = (v) => [...new Set(String(v).split('\n').map((x) => x.trim()).filter(Boolean))];
     const s = S.settings;
     const ess = lines(f.essences); const lon = lines(f.longueurs);
-    const con = lines(f.contenants).map((x) => { const [nom, u, st] = x.split('='); return { nom: nom.trim(), unite: (u || nom).trim(), steres: num(st) }; });
+    const con = lines(f.contenants).map((x) => {
+      const [nom, u, st, dim] = x.split('=');
+      const m = /([\d.,]+)\s*[x×*]\s*([\d.,]+)/i.exec(dim || '');
+      return { nom: nom.trim(), unite: (u || nom).trim(), steres: num(st), ...(m ? { dims: [num(m[1]), num(m[2])] } : {}) };
+    });
     if (!ess.length || !lon.length || !con.length || !prods.length) { toast('Chaque liste doit contenir au moins un élément'); return; }
     Object.assign(s, { essences: ess, longueurs: lon, contenants: con, produits: prods, entreprises: lines(f.entreprises) });
+    for (const z of s.lieux) if (z.grid?.origin) z.ring = gridRing(z.grid);
     s.triage = { nom: f.t_nom.trim(), tel: f.t_tel.trim(), adresse: f.t_adresse.trim(), email: f.t_email.trim() };
     await saveSettings();
     toast('Catalogue enregistré');
@@ -1598,6 +1855,7 @@ async function resetData(tout) {
   S.settings.seuils = tout ? {} : S.settings.seuils;
   S.mapView = null;
   S.fLieu = '';
+  Object.assign(S, { drawing: null, editing: null, placingGrid: null, adjusting: null });
   await saveSettings();
   await cleanPhotos(usedPhotos());
   toast(tout ? 'Tout est effacé' : 'Zones effacées', 3000);
@@ -1672,10 +1930,14 @@ function go(view) {
 async function load() {
   const kv = await db.get('kv', 'settings');
   S.settings = { ...structuredClone(DEFAULT_SETTINGS), ...(kv?.value || {}) };
-  if ((S.settings.version || 1) < SETTINGS_VERSION) {
+  if ((S.settings.version || 1) < 2) {
     // Ancien catalogue : remplacé par les produits du triage. Les lieux deviennent des zones.
-    Object.assign(S.settings, DEFAULT_CATALOGUE(), { version: SETTINGS_VERSION });
+    Object.assign(S.settings, DEFAULT_CATALOGUE());
   }
+  if ((S.settings.version || 1) < 3) {
+    for (const c of S.settings.contenants) if (!c.dims && DIMS_DEFAUT[c.nom]) c.dims = DIMS_DEFAUT[c.nom];
+  }
+  S.settings.version = SETTINGS_VERSION;
   if (!kv || kv.value.version !== S.settings.version) await saveSettings();
   [S.lots, S.mvts, S.cmds] = await Promise.all([db.all('lots'), db.all('mouvements'), db.all('commandes')]);
 }

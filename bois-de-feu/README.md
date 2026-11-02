@@ -15,15 +15,20 @@ Adresse : https://mactimber.github.io/Projet-mac/bois-de-feu/
 | Feuillus indigènes | 33 cm | big-bag |
 | Bouleau | 50 cm | big-bag |
 
-Équivalences : big-bag = 1 stère, caisse = 0,7 stère, ballot = 1 stère. Tout se modifie dans **Plus → Catalogue**.
+Équivalences : big-bag = 1 stère, caisse = 0,7 stère, ballot = 1 stère.
+Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 1 × 1 m. Tout se modifie dans **Plus → Catalogue**.
 
 ## Les onglets
 1. **Stock** : un résumé par produit avec le total en stères, la zone **👉 où l'on prend** ce bois,
    et une alerte de stock bas (toucher une ligne pour régler le seuil).
    Les lots sont rangés par zone, avec photos, état, durée de séchage et humidité.
    Les boutons **− / +** servent à corriger l'inventaire et à noter le bois sorti.
-2. **Zones** : carte swisstopo (photo aérienne ou carte) sur laquelle on **dessine le contour** de chaque zone,
-   sur toutes les places autour du triage. Couleurs : 🟢 à prendre, 🔵 réserve, 🟠 en séchage / vert, ⚪ vide.
+2. **Zones** : carte swisstopo (photo aérienne ou carte) avec les zones de toutes les places autour du triage.
+   Une zone se décrit en **rangées de contenants** (ex. 8 caisses × 2 lignes, 2 étages) : l'application calcule ses
+   dimensions exactes (caisse 1,2 × 0,8 m, big-bag 1,2 × 1,2 m, ballot 1 × 1 m), sa capacité et son taux d'occupation.
+   On la place en touchant le coin de départ puis un point dans l'alignement, ou **à la suite / derrière / devant**
+   une autre zone avec l'espace habituel (0,5 m), puis on l'ajuste au besoin (déplacer par 10 cm, tourner).
+   Le dessin libre reste possible pour les zones irrégulières. Couleurs : 🟢 à prendre, 🔵 réserve, 🟠 en séchage / vert, ⚪ vide.
    La partie de la carte utile s'enregistre pour être consultée sans réseau.
    **Règle anti-picorage** : pour chaque produit, un seul lot est « à prendre » ; les autres restent en réserve.
    Quand le lot en cours est vide, l'application ouvre automatiquement la réserve suivante
