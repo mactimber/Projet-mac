@@ -26,8 +26,9 @@ Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 
 2. **Zones** : carte swisstopo (photo aérienne ou carte) avec les zones de toutes les places autour du triage.
    Une zone se décrit en **rangées de contenants** (ex. 8 caisses × 2 lignes, 2 étages) : l'application calcule ses
    dimensions exactes (caisse 1,2 × 0,8 m, big-bag 1,2 × 1,2 m, ballot 1 × 1 m), sa capacité et son taux d'occupation.
-   On la place en touchant le coin de départ puis un point dans l'alignement, ou **à la suite / derrière / devant**
-   une autre zone avec l'espace habituel (0,5 m), puis on l'ajuste au besoin (déplacer par 10 cm, tourner).
+   On la pose d'**un toucher** sur la carte (elle reprend l'alignement de la zone voisine), puis on la **glisse avec le doigt** :
+   près d'une autre zone, l'**aimant** la colle à côté avec l'espace habituel (0,5 m, réglable dans le catalogue).
+   Deux boutons servent à la tourner (1° ou 5°).
    Le dessin libre reste possible pour les zones irrégulières. Couleurs : 🟢 à prendre, 🔵 réserve, 🟠 en séchage / vert, ⚪ vide.
    La partie de la carte utile s'enregistre pour être consultée sans réseau.
    **Règle anti-picorage** : pour chaque produit, un seul lot est « à prendre » ; les autres restent en réserve.
