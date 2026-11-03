@@ -1103,8 +1103,9 @@ function signaturePad(canvas) {
 
 // ---- Impression : plan des zones (photo) + état du stock
 
-// Dessine la photo de la place avec les zones (recadrée sur les zones) et renvoie une image.
-async function imagePlan() {
+// Dessine la photo de la place avec les zones (recadrée sur les zones).
+// o = { fond: 'normal' | 'pale' | 'blanc', carres: bool, etiquettes: 'noms' | 'numeros' | 'rien' }
+async function imagePlan(o) {
   const pl = S.settings.plan;
   if (!pl) return null;
   const u = await photoURL(pl.photo);
@@ -1120,89 +1121,165 @@ async function imagePlan() {
     const pts = zones.flatMap((z) => z.ring.map(toPx));
     x0 = Math.min(...pts.map((q) => q[0])); x1 = Math.max(...pts.map((q) => q[0]));
     y0 = Math.min(...pts.map((q) => q[1])); y1 = Math.max(...pts.map((q) => q[1]));
-    const m = Math.max(80, 0.15 * Math.max(x1 - x0, y1 - y0));
+    const m = Math.max(60, 0.08 * Math.max(x1 - x0, y1 - y0));
     x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W, x1 + m); y1 = Math.min(H, y1 + m);
   }
   const cw = x1 - x0;
   const ch = y1 - y0;
-  const k = Math.min(2400 / cw, 3200 / ch, 4);
+  const k = Math.min(3600 / cw, 3600 / ch, 6);
   const cv = document.createElement('canvas');
   cv.width = Math.round(cw * k);
   cv.height = Math.round(ch * k);
   const ctx = cv.getContext('2d');
-  ctx.drawImage(img, x0, y0, cw, ch, 0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  if (o.fond !== 'blanc') {
+    ctx.drawImage(img, x0, y0, cw, ch, 0, 0, cv.width, cv.height);
+    if (o.fond === 'pale') { ctx.globalAlpha = 0.6; ctx.fillRect(0, 0, cv.width, cv.height); ctx.globalAlpha = 1; }
+  }
   const P = (ll) => { const [x, y] = toPx(ll); return [(x - x0) * k, (y - y0) * k]; };
   const path = (ring) => { ctx.beginPath(); ring.forEach((ll, i) => { const [x, y] = P(ll); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); };
+  const trait = Math.max(2, cv.width / 600);
   for (const z of zones) {
     const st = zoneStatus(z.id);
-    ctx.globalAlpha = 0.5; ctx.fillStyle = ZONE_COLORS[st]; path(z.ring); ctx.fill();
-    ctx.globalAlpha = 1; ctx.lineWidth = Math.max(2, cv.width / 500); ctx.strokeStyle = '#fff'; ctx.stroke();
-    if (z.grid) {
-      ctx.lineWidth = Math.max(1, cv.width / 1600); ctx.strokeStyle = 'rgba(255,255,255,.85)';
+    ctx.globalAlpha = 0.75; ctx.fillStyle = ZONE_COLORS[st]; path(z.ring); ctx.fill();
+    ctx.globalAlpha = 1; ctx.lineWidth = trait; ctx.strokeStyle = '#222'; ctx.stroke();
+    if (o.carres && z.grid) {
+      ctx.lineWidth = Math.max(1, cv.width / 2000); ctx.strokeStyle = 'rgba(255,255,255,.7)';
       for (const u2 of gridUnits(z.grid)) { path(u2); ctx.stroke(); }
     }
   }
-  // Seulement un numéro par zone (la légende est sous le plan)
-  const fs = Math.max(18, cv.width / 42);
-  zones.forEach((z, i) => {
-    const st = zoneStatus(z.id);
-    const [cx, cy] = P(centreRing(z.ring));
-    const rr = fs * 0.85;
-    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
-    ctx.fillStyle = ZONE_COLORS[st]; ctx.fill();
-    ctx.lineWidth = fs * 0.18; ctx.strokeStyle = '#fff'; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = `bold ${fs}px system-ui, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), cx, cy + fs * 0.05);
-  });
-  return cv.toDataURL('image/jpeg', 0.9);
+  if (o.etiquettes !== 'rien') {
+    const fs = Math.max(18, cv.width / 55);
+    zones.forEach((z, i) => {
+      const st = zoneStatus(z.id);
+      const [cx, cy] = P(centreRing(z.ring));
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      if (o.etiquettes === 'numeros') {
+        ctx.beginPath(); ctx.arc(cx, cy, fs * 0.85, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.lineWidth = fs * 0.15; ctx.strokeStyle = ZONE_COLORS[st]; ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.font = `bold ${fs}px system-ui, sans-serif`;
+        ctx.fillText(String(i + 1), cx, cy + fs * 0.05);
+      } else {
+        const t = `${st === 'prendre' ? '👉 ' : ''}${z.nom}`;
+        ctx.font = `bold ${fs}px system-ui, sans-serif`;
+        const w = ctx.measureText(t).width + fs * 0.8;
+        ctx.fillStyle = 'rgba(255,255,255,.93)';
+        ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - fs * 0.75, w, fs * 1.5, fs * 0.3); ctx.fill();
+        ctx.lineWidth = fs * 0.12; ctx.strokeStyle = ZONE_COLORS[st]; ctx.stroke();
+        ctx.fillStyle = '#000';
+        ctx.fillText(t, cx, cy + fs * 0.05);
+      }
+    });
+  }
+  return { url: cv.toDataURL('image/jpeg', 0.9), w: cv.width, h: cv.height };
 }
 
-async function imprimerFiche() {
+const PRINT_DEFAUT = { plan: true, legende: true, stock: true, detail: false, format: 'A4', orientation: 'auto', fond: 'pale', carres: false, etiquettes: 'noms' };
+
+function lirePrefsImpression() {
+  try { return { ...PRINT_DEFAUT, ...JSON.parse(localStorage.getItem('bf-print') || '{}') }; } catch { return { ...PRINT_DEFAUT }; }
+}
+
+// Fenêtre : que veut-on imprimer, et en quel format ?
+function imprimerFiche() {
+  const o = lirePrefsImpression();
+  const pl = !!S.settings.plan;
+  const ck = (n, t) => `<label class="check big-check"><input type="checkbox" name="${n}" ${o[n] ? 'checked' : ''}> ${t}</label>`;
+  const rad = (n, v, t) => `<label class="check big-check"><input type="radio" name="${n}" value="${v}" ${o[n] === v ? 'checked' : ''}> ${t}</label>`;
+  const form = openDlg('Imprimer', `
+    <h3>Que voulez-vous imprimer ?</h3>
+    ${pl ? ck('plan', 'Le plan des zones') + ck('legende', 'La liste des zones sous le plan') : '<p class="hint">Pas de photo de la place : seul le stock peut être imprimé.</p>'}
+    ${ck('stock', 'Le tableau du stock (par produit)')}
+    ${ck('detail', 'Le détail zone par zone')}
+    ${pl ? `<h3>Plan</h3>
+    <div class="grid2">
+      <label>Fond<select name="fond">${options([{ v: 'pale', t: 'Photo pâle (conseillé)' }, { v: 'normal', t: 'Photo normale' }, { v: 'blanc', t: 'Sans photo' }], o.fond)}</select></label>
+      <label>Sur les zones<select name="etiquettes">${options([{ v: 'noms', t: 'Le nom de la zone' }, { v: 'numeros', t: 'Un numéro' }, { v: 'rien', t: 'Rien (couleur seule)' }], o.etiquettes)}</select></label>
+    </div>
+    ${ck('carres', 'Dessiner les contenants (petits carrés)')}` : ''}
+    <h3>Papier</h3>
+    <div class="row">${rad('format', 'A4', 'A4')}${rad('format', 'A3', 'A3')}</div>
+    <div class="row">${rad('orientation', 'auto', 'Automatique')}${rad('orientation', 'portrait', 'Portrait')}${rad('orientation', 'paysage', 'Paysage')}</div>
+    <p class="hint">Dans la fenêtre d’impression, choisissez le même format de papier (A4 ou A3).</p>`,
+  '<button type="button" data-close>Annuler</button><span class="spacer"></span><button class="primary">🖨 Imprimer</button>');
+  onSubmit(form, async (f) => {
+    const opts = {
+      plan: pl && !!f.plan, legende: pl && !!f.legende, stock: !!f.stock, detail: !!f.detail,
+      format: f.format || 'A4', orientation: f.orientation || 'auto', fond: f.fond || o.fond, carres: !!f.carres, etiquettes: f.etiquettes || o.etiquettes,
+    };
+    if (!opts.plan && !opts.legende && !opts.stock && !opts.detail) { toast('Cochez au moins un élément'); return; }
+    try { localStorage.setItem('bf-print', JSON.stringify(opts)); } catch { /* */ }
+    dlg().close();
+    await lancerImpression(opts);
+  });
+}
+
+async function lancerImpression(o) {
   toast('Préparation de l’impression…', 3000);
   const t = S.settings.triage;
   const date = new Date().toLocaleDateString('fr-CH', { day: 'numeric', month: 'long', year: 'numeric' });
   const rows = resume();
-  const plan = await imagePlan();
+  const plan = o.plan ? await imagePlan(o) : null;
   let totSt = 0;
   for (const r of rows) totSt += steres(r.total, r.p.contenant);
   const zones = S.settings.lieux;
+  const zPlan = zones.filter((z) => z.ring);
+  // Format de page
+  let pw = o.format === 'A3' ? 297 : 210;
+  let ph = o.format === 'A3' ? 420 : 297;
+  const paysage = o.orientation === 'paysage' || (o.orientation === 'auto' && plan && plan.w > plan.h);
+  if (paysage) [pw, ph] = [ph, pw];
+  const marge = 10;
+  let style = $('#page-style');
+  if (!style) { style = document.createElement('style'); style.id = 'page-style'; document.head.appendChild(style); }
+  style.textContent = `@media print { @page { size: ${o.format} ${paysage ? 'landscape' : 'portrait'}; margin: ${marge}mm; } }`;
+  window.addEventListener('afterprint', () => { style.textContent = ''; }, { once: true });
+  const lignesLeg = o.legende ? Math.ceil(zPlan.length / (paysage ? 3 : 2)) : 0;
+  const hPlan = Math.max(80, ph - 2 * marge - 16 - 8 - (o.legende ? 6 + lignesLeg * 6 : 0));
+  const wPlan = pw - 2 * marge;
   const reserves = (k) => [...new Set(S.lots.filter((l) => pkey(l) === k && l.quantite > 0 && l.role !== 'prendre').map((l) => lieuNom(l.lieu)))];
   const entete = (titre) => `<header><img src="img/logo-triage.jpg" alt=""><div><b>${esc(t.nom)}</b><br>${esc(titre)} · ${esc(date)}</div></header>`;
-  $('#print').innerHTML = `<div class="fiche">
-    ${plan ? `<section class="f-page">
+  const etatTxt = { prendre: '👉 À prendre', reserve: 'Réserve', sechage: 'En séchage', vide: 'Vide' };
+  const qteZone = (z) => {
+    const ls = zoneLots(z.id);
+    if (!ls.length) return '';
+    if (ls.length === 1) return `${fmtQ(ls[0].quantite)} ${ls[0].quantite > 1 ? pluriel(ls[0].contenant) : ls[0].contenant.toLowerCase()}`;
+    return ls.map((l) => `${fmtQ(l.quantite)} ${shortProd(l)}`).join(', ');
+  };
+  const pages = [];
+  if (plan || o.legende) {
+    pages.push(`<section class="f-page">
       ${entete('Plan des zones de bois de feu')}
-      <img class="f-plan" src="${plan}" alt="Plan">
-      <div class="f-leg"><span><i style="background:${ZONE_COLORS.prendre}"></i>👉 À prendre : c’est ici qu’on se sert</span><span><i style="background:${ZONE_COLORS.reserve}"></i>Réserve : ne pas toucher</span><span><i style="background:${ZONE_COLORS.sechage}"></i>En séchage : ne pas toucher</span><span><i style="background:${ZONE_COLORS.vide}"></i>Vide</span></div>
-      <table class="f-legende"><thead><tr><th>N°</th><th>Zone</th><th>État</th><th class="n">Quantité</th></tr></thead><tbody>
-      ${zones.filter((z) => z.ring).map((z, i) => {
+      ${plan ? `<img class="f-plan" src="${plan.url}" alt="Plan" style="max-width:${wPlan}mm;max-height:${hPlan}mm">
+      <div class="f-leg"><span><i style="background:${ZONE_COLORS.prendre}"></i>👉 À prendre : on se sert ici</span><span><i style="background:${ZONE_COLORS.reserve}"></i>Réserve : ne pas toucher</span><span><i style="background:${ZONE_COLORS.sechage}"></i>En séchage : ne pas toucher</span><span><i style="background:${ZONE_COLORS.vide}"></i>Vide</span></div>` : ''}
+      ${o.legende ? `<div class="f-liste" style="columns:${paysage ? 3 : 2}">${zPlan.map((z, i) => {
         const st = zoneStatus(z.id);
-        const etat = { prendre: '👉 À prendre', reserve: 'Réserve – ne pas toucher', sechage: 'En séchage – ne pas toucher', vide: 'Vide' }[st];
-        const ls = zoneLots(z.id).sort((a, b) => (a.role === 'prendre' ? -1 : 0) - (b.role === 'prendre' ? -1 : 0));
-        return `<tr><td class="f-num"><span style="background:${ZONE_COLORS[st]}">${i + 1}</span></td><td><b>${esc(z.nom)}</b></td><td>${esc(etat)}</td>
-          <td class="n">${ls.length > 1
-            ? ls.map((l) => `${fmtQ(l.quantite)} ${esc(pluriel(l.contenant))} <small>${esc(l.essence)} ${esc(l.longueur)}</small>`).join('<br>')
-            : ls.length ? `${fmtQ(ls[0].quantite)} ${esc(ls[0].quantite > 1 ? pluriel(ls[0].contenant) : ls[0].contenant.toLowerCase())}` : '—'}</td></tr>`;
-      }).join('')}</tbody></table>
-    </section>` : ''}
-    <section class="f-page${plan ? ' f-break' : ''}">
+        return `<div class="f-li"><span class="f-pt" style="background:${ZONE_COLORS[st]}">${o.etiquettes === 'numeros' ? i + 1 : ''}</span><b>${esc(z.nom)}</b> <span class="f-etat">${esc(etatTxt[st])}${qteZone(z) ? ` · ${esc(qteZone(z))}` : ''}</span></div>`;
+      }).join('')}</div>` : ''}
+    </section>`);
+  }
+  if (o.stock || o.detail) {
+    pages.push(`<section class="f-page${pages.length ? ' f-break' : ''}">
       ${entete('État du stock')}
       <h1>Stock au ${esc(date)} <small>≈ ${fmtQ(totSt)} stères</small></h1>
-      <table><thead><tr><th>Produit</th><th class="n">Quantité</th><th class="n">≈ stères</th><th>👉 Prendre en</th><th>Réserves</th></tr></thead><tbody>
+      ${o.stock ? `<table><thead><tr><th>Produit</th><th class="n">Quantité</th><th class="n">≈ stères</th><th>👉 Prendre en</th><th>Réserves</th></tr></thead><tbody>
       ${rows.filter((r) => r.total > 0).map((r) => { const c = lotCourant(r.k); return `<tr><td><b>${esc(r.p.essence)} ${esc(r.p.longueur)}</b> ${esc(r.p.contenant)}${r.autre ? `<br><small>dont ${fmtQ(r.autre)} en séchage / vert</small>` : ''}</td>
         <td class="n">${qty(r.total, r.p.contenant)}</td><td class="n">${fmtQ(steres(r.total, r.p.contenant))}</td>
         <td><b>${c ? esc(lieuNom(c.lieu)) : '—'}</b></td><td>${esc(reserves(r.k).join(', ') || '—')}</td></tr>`; }).join('')}
-      </tbody></table>
-      <h2>Détail par zone</h2>
+      </tbody></table>` : ''}
+      ${o.detail ? `<h2>Détail par zone</h2>
       <div class="f-zones">${zones.map((z) => {
         const ls = zoneLots(z.id).sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr'));
         const st = zoneStatus(z.id);
         return `<div class="f-zone"><h3><i style="background:${ZONE_COLORS[st]}"></i>${esc(z.nom)}${z.grid ? ` <small>· ${esc(gridText(z.grid).split(' (')[0])}</small>` : ''}</h3>
-          ${ls.length ? `<ul>${ls.map((l) => `<li>${l.role === 'prendre' ? '👉 ' : ''}<b>${qty(l.quantite, l.contenant)}</b> ${esc(l.essence)} ${esc(l.longueur)} ${esc(l.contenant)}${l.etat !== 'sec' ? ` <small>(${esc(ETATS[l.etat])})</small>` : ''}${l.role === 'prendre' ? ' <b>– à prendre</b>' : ''}</li>`).join('')}</ul>` : '<p><small>Vide</small></p>'}
+          ${ls.length ? `<ul>${ls.map((l) => `<li>${l.role === 'prendre' ? '👉 ' : ''}<b>${qty(l.quantite, l.contenant)}</b> ${esc(l.essence)} ${esc(l.longueur)} ${esc(l.contenant)}${l.etat !== 'sec' ? ` <small>(${esc(ETATS[l.etat])})</small>` : ''}</li>`).join('')}</ul>` : '<p><small>Vide</small></p>'}
         </div>`;
-      }).join('')}</div>
-    </section>
-  </div>`;
+      }).join('')}</div>` : ''}
+    </section>`);
+  }
+  $('#print').innerHTML = `<div class="fiche fmt-${o.format}">${pages.join('')}</div>`;
   await Promise.all($$('img', $('#print')).map((im) => (im.complete ? null : new Promise((r) => { im.onload = r; im.onerror = r; }))));
   window.print();
 }
