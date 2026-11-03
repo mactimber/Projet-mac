@@ -18,9 +18,9 @@ const TYPES = {
 const ENTREE_TYPES = ['facon', 'achat', 'propre', 'initial'];
 const STATUTS = { a_planifier: 'À planifier', planifiee: 'Planifiée', livree: 'Livrée – à facturer', facturee: 'Facturée' };
 
-const SETTINGS_VERSION = 4;
-// Dimensions au sol (m) : caisse = palette EUR, big-bag ≈ 1,2 × 1,2, ballot 1 m ≈ 1 × 1.
-const DIMS_DEFAUT = { Caisse: [1.2, 0.8], 'Big-bag': [1.2, 1.2], Ballot: [1, 1] };
+const SETTINGS_VERSION = 5;
+// Dimensions au sol (m) : caisse = palette EUR, big-bag ≈ 1,2 × 1,2, ballot 1 m (bois cerclé) ≈ une caisse.
+const DIMS_DEFAUT = { Caisse: [1.2, 0.8], 'Big-bag': [1.2, 1.2], Ballot: [1.2, 0.8] };
 const TOUTES_LONGUEURS = ['1 m', '50 cm', '33 cm', '25 cm'];
 
 // Produits vendus : 1 m en ballots, le reste en big-bags, foyard 25 et 33 aussi en caisses.
@@ -43,7 +43,7 @@ const DEFAULT_CATALOGUE = () => ({
   essences: ['Fayard', 'Mélèze', 'Épicéa', 'Frêne', 'Feuillus indigènes', 'Bouleau'],
   longueurs: [...TOUTES_LONGUEURS],
   contenants: [
-    { nom: 'Ballot', unite: 'ballot', steres: 1, dims: [1, 1] },
+    { nom: 'Ballot', unite: 'ballot', steres: 1, dims: [1.2, 0.8] },
     { nom: 'Big-bag', unite: 'bb', steres: 1, dims: [1.2, 1.2] },
     { nom: 'Caisse', unite: 'caisse', steres: 0.75, dims: [1.2, 0.8] },
   ],
@@ -1257,6 +1257,7 @@ function gridApres(g, ref, ou, ecart) {
   return { ...g, origin: fixLL(pos), angle: rg.angle, side: rg.side || 1 };
 }
 
+const centreRing = (r) => [r.reduce((t, p) => t + p[0], 0) / r.length, r.reduce((t, p) => t + p[1], 0) / r.length];
 const distM = (a, b) => Math.hypot((b[1] - a[1]) * M_LAT * Math.cos(a[0] * Math.PI / 180), (b[0] - a[0]) * M_LAT);
 const gridCentre = (g) => { const { L, D } = gridSize(g); return gridPos(g, L / 2, D / 2); };
 
@@ -2190,6 +2191,14 @@ async function load() {
     for (const l of S.lots) if (ren(l)) await db.put('lots', l);
     for (const m of S.mvts) if (ren(m)) await db.put('mouvements', m);
     for (const c of S.cmds) if (c.lignes.map(ren).some(Boolean)) await db.put('commandes', c);
+  }
+  if ((S.settings.version || 1) < 5) {
+    // Ballot de 1 m : bois empilé et cerclé, environ la surface d'une caisse.
+    const b = S.settings.contenants.find((c) => c.nom === 'Ballot');
+    if (b && (!b.dims || (b.dims[0] === 1 && b.dims[1] === 1))) b.dims = [1.2, 0.8];
+    for (const z of S.settings.lieux) {
+      if (z.grid?.origin && z.grid.contenant === 'Ballot') { z.grid = gridAuCentre(z.grid, z.ring ? centreRing(z.ring) : z.grid.origin); z.ring = gridRing(z.grid); }
+    }
   }
   S.settings.version = SETTINGS_VERSION;
   if (!kv || kv.value.version !== S.settings.version) await saveSettings();

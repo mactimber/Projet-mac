@@ -16,7 +16,7 @@ Adresse : https://mactimber.github.io/Projet-mac/bois-de-feu/
 | Bouleau | 50 cm | big-bag |
 
 Équivalences : big-bag = 1 stère, caisse = 0,75 stère, ballot = 1 stère.
-Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 1 × 1 m. Tout se modifie dans **Plus → Catalogue**.
+Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 1,2 × 0,8 m (bois cerclé, comme une caisse). Tout se modifie dans **Plus → Catalogue**.
 
 ## Les onglets
 1. **Stock** : un résumé par produit avec le total en stères, la zone **👉 où l'on prend** ce bois,
@@ -25,7 +25,7 @@ Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 
    Les boutons **− / +** servent à corriger l'inventaire et à noter le bois sorti.
 2. **Zones** : carte swisstopo avec les zones (fond « Plan vide » = plan cadastral sur fond blanc, sans les anciens tas de la photo ; aussi photo pâle, photo aérienne, carte) de toutes les places autour du triage.
    Une zone se décrit en **rangées de contenants** (ex. 8 caisses × 2 lignes, 2 étages) : l'application calcule ses
-   dimensions exactes (caisse 1,2 × 0,8 m, big-bag 1,2 × 1,2 m, ballot 1 × 1 m), sa capacité et son taux d'occupation.
+   dimensions exactes (caisse 1,2 × 0,8 m, big-bag 1,2 × 1,2 m, ballot 1,2 × 0,8 m (bois cerclé, comme une caisse)), sa capacité et son taux d'occupation.
    On la pose d'**un toucher** sur la carte (elle reprend l'alignement de la zone voisine), puis on la **glisse avec le doigt** :
    près d'une autre zone, l'**aimant** la colle à côté avec l'espace habituel (0,5 m, réglable dans le catalogue).
    Deux boutons servent à la tourner (1° ou 5°).
