@@ -304,3 +304,6 @@ button.link { border: 0; background: none; text-decoration: underline; min-heigh
 .steps-list { padding-left: 20px; margin: 6px 0 8px; }
 .steps-list li { margin-bottom: 8px; }
 .grow { flex: 1; margin: 0; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.btn.big { width: 100%; min-height: 52px; font-size: 17px; }
+.plan-vide p { margin: 6px 0 12px; }

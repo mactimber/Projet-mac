@@ -31,7 +31,7 @@ Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 
    Deux boutons servent à la tourner (1° ou 5°).
    Le dessin libre reste possible pour les zones irrégulières.
    **Photo de la place** : on choisit sa propre photo vue du dessus (par ex. capture satellite nettoyée) ; elle remplace
-   la carte swisstopo. On règle une fois l'**échelle** en traçant une longueur connue et en indiquant sa taille en mètres :
+   toute carte : il n’y a plus de carte swisstopo. On règle une fois l'**échelle** en traçant une longueur connue et en indiquant sa taille en mètres :
    les zones en rangées ont alors leur taille réelle sur la photo.
    La partie de la carte utile s'enregistre pour être consultée sans réseau.
    **Règle anti-picorage** : pour chaque produit, un seul lot est « à prendre » ; les autres restent en réserve.
