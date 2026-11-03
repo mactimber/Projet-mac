@@ -39,9 +39,9 @@ Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 
    (d'abord celle déjà entamée, puis le bois sec le plus ancien, puis l'ordre des zones).
 3. **Entrées** : façonnage par une entreprise externe, livraison de bois prêt / sec acheté,
    ou façonnage par l'équipe. L'entrée crée un nouveau lot (en réserve) ou s'ajoute à un lot existant.
-   **🖨 Imprimer** (onglets Zones ou Stock) : on choisit ce qu'on imprime (plan, liste des zones, tableau du stock,
-   détail par zone), le papier (A4 / A3, portrait / paysage / automatique) et le style du plan (photo pâle, normale
-   ou sans photo ; nom ou numéro sur les zones ; contenants dessinés ou non). Les choix sont mémorisés.
+   **🖨 Imprimer** (onglets Zones ou Stock) : plan général (toute la place, zones proches regroupées en secteurs
+   numérotés) puis une page zoomée par secteur, où le nom de chaque zone est écrit dans le sens de la ligne ;
+   en option le tableau du stock et le détail par zone. Papier A4 / A3, sens choisi automatiquement par page.
 4. **Plus** : historique, exports CSV (Excel), **import d'un inventaire** (CSV : Essence ; Longueur ; Contenant ; Quantité ; État ; Zone), catalogue (produits vendus, contenants et stères,
    entreprises), copie de secours, et activation du module **Commandes et livraisons**
    (désactivé pour l'instant : commandes, liste de chargement, tournée, signature, bon PDF).
