@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne.
 
-const APP_CACHE = 'bf-app-v11';
+const APP_CACHE = 'bf-app-v12';
 const TILE_CACHE = 'bf-tiles-v1';
 const MAX_TILES = 6000;
 
@@ -22,6 +22,7 @@ const APP_FILES = [
   'vendor/geoman/leaflet-geoman.min.js',
   'vendor/geoman/leaflet-geoman.css',
   'img/logo-triage.jpg',
+  'img/place-triage.jpg',
   'icons/logo-vallon-180.png',
   'icons/logo-vallon-192.png',
   'icons/logo-vallon-512.png',

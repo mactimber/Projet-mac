@@ -1638,6 +1638,23 @@ function mettreAEchelle(k) {
   }
 }
 
+// Photo de la place du triage fournie avec l'application (installée une seule fois).
+async function installerPlanDefaut() {
+  if (S.settings.plan || S.settings.planDefaut) return;
+  try {
+    const res = await fetch('img/place-triage.jpg');
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const id = await storePhoto(blob, 4096, 0.9);
+    const u = await photoURL(id);
+    const img = await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = u; });
+    if (!img) return;
+    S.settings.plan = { photo: id, w: img.naturalWidth, h: img.naturalHeight, mpp: 150 / Math.max(img.naturalWidth, img.naturalHeight), center: RECHY, echelleOk: false };
+    S.settings.planDefaut = true;
+    await saveSettings();
+  } catch { /* hors-ligne : réessayé au prochain démarrage */ }
+}
+
 async function choisirPlan(file) {
   if (!file) return;
   const ancien = S.settings.plan;
@@ -2224,6 +2241,7 @@ async function load() {
 
 async function start() {
   await load();
+  await installerPlanDefaut();
   $$('.tabs button').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
   $('#viewer').addEventListener('click', () => $('#viewer').close());
   const h = location.hash.slice(1);
