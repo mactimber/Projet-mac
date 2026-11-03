@@ -18,7 +18,7 @@ const TYPES = {
 const ENTREE_TYPES = ['facon', 'achat', 'propre', 'initial'];
 const STATUTS = { a_planifier: 'À planifier', planifiee: 'Planifiée', livree: 'Livrée – à facturer', facturee: 'Facturée' };
 
-const SETTINGS_VERSION = 5;
+const SETTINGS_VERSION = 6;
 // Dimensions au sol (m) : caisse = palette EUR, big-bag ≈ 1,2 × 1,2, ballot 1 m (bois cerclé) ≈ une caisse.
 const DIMS_DEFAUT = { Caisse: [1.2, 0.8], 'Big-bag': [1.2, 1.2], Ballot: [1.2, 0.8] };
 const TOUTES_LONGUEURS = ['1 m', '50 cm', '33 cm', '25 cm'];
@@ -1452,6 +1452,7 @@ function renderPlace() {
           <button type="button" data-rot="-5">⟲ 5°</button><button type="button" data-rot="-1">⟲ 1°</button>
           <button type="button" data-rot="1">1° ⟳</button><button type="button" data-rot="5">5° ⟳</button>
         </div>
+        ${adjusting.grid ? '<div class="row mt"><button type="button" id="adj-sens">↻ Tourner les contenants 90°</button></div>' : ''}
         <p class="hint m0">${S.aimant ? `Aimant : lâchée tout près d’une autre zone, elle s’y colle (${fmtQ(S.settings.ecartZones ?? 0.5)} m d’espace).` : 'Aimant désactivé : la zone reste exactement où vous la lâchez.'}</p>
         <div class="row mt"><span class="spacer"></span><button type="button" class="primary" id="adj-end">✓ Terminer</button></div>
       </div>` : ''}
@@ -1665,6 +1666,17 @@ function bindPlace(root) {
       drawZone(z, group, root);
       arm();
     }));
+    const bs = $('#adj-sens', root);
+    if (bs) {
+      bs.onclick = () => {
+        const c = gridCentre(z.grid);
+        z.grid.sens = z.grid.sens === 'large' ? 'long' : 'large';
+        z.grid = gridAuCentre(z.grid, c);
+        z.ring = gridRing(z.grid);
+        drawZone(z, group, root);
+        arm();
+      };
+    }
     $('#adj-aimant', root).onclick = (e) => {
       S.aimant = !S.aimant;
       try { localStorage.setItem('bf-aimant', S.aimant ? 'oui' : 'non'); } catch { /* */ }
@@ -1876,7 +1888,9 @@ function zoneDialog(zone) {
   const i = zones.indexOf(zone);
   const conts = S.settings.contenants.filter((c) => c.dims);
   const last = [...zones].reverse().find((x) => x.grid && x.id !== z.id);
-  const g = z.grid || { contenant: last?.grid.contenant || conts[0]?.nom, cols: '', rows: '', etages: 1, gap: 0, sens: 'long' };
+  const c0 = last?.grid.contenant || conts[0]?.nom;
+  const sensDefaut = (cont) => [...zones].reverse().find((x) => x.grid?.contenant === cont && x.id !== z.id)?.grid.sens || (cont === 'Caisse' ? 'large' : 'long');
+  const g = z.grid || { contenant: c0, cols: '', rows: '', etages: 1, gap: 0, sens: sensDefaut(c0) };
   const forme = z.grid || isNew ? 'grille' : (z.ring ? 'libre' : 'grille');
   const form = openDlg(isNew ? 'Nouvelle zone' : `Zone ${z.nom}`, `
     <label>Nom de la zone<input name="nom" required value="${esc(z.nom)}" placeholder="ex. Zone A, Place du hangar…"></label>
@@ -1918,6 +1932,7 @@ function zoneDialog(zone) {
     $('#f-grille', form).hidden = libre;
     $('#g-info', form).textContent = num(form.cols.value) && num(form.rows.value) ? gridText(readGrid()) : 'Mesurez la surface au sol : nombre de contenants dans une ligne et nombre de lignes quand la zone est pleine.';
   };
+  if (!z.grid) form.contenant.addEventListener('change', () => { form.sens.value = sensDefaut(form.contenant.value); refresh(); });
   form.addEventListener('input', refresh);
   form.addEventListener('change', refresh);
   refresh();
@@ -2374,6 +2389,16 @@ async function load() {
     if (b && (!b.dims || (b.dims[0] === 1 && b.dims[1] === 1))) b.dims = [1.2, 0.8];
     for (const z of S.settings.lieux) {
       if (z.grid?.origin && z.grid.contenant === 'Ballot') { z.grid = gridAuCentre(z.grid, z.ring ? centreRing(z.ring) : z.grid.origin); z.ring = gridRing(z.grid); }
+    }
+  }
+  if ((S.settings.version || 1) < 6) {
+    // Au triage, les caisses sont posées côté court dans la ligne.
+    for (const z of S.settings.lieux) {
+      if (z.grid?.contenant === 'Caisse') {
+        const c = z.grid.origin ? gridCentre(z.grid) : null;
+        z.grid.sens = z.grid.sens === 'large' ? 'long' : 'large';
+        if (c) { z.grid = gridAuCentre(z.grid, c); z.ring = gridRing(z.grid); }
+      }
     }
   }
   S.settings.version = SETTINGS_VERSION;
