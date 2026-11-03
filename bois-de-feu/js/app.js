@@ -1137,6 +1137,10 @@ async function imagePlan() {
     const st = zoneStatus(z.id);
     ctx.globalAlpha = 0.5; ctx.fillStyle = ZONE_COLORS[st]; path(z.ring); ctx.fill();
     ctx.globalAlpha = 1; ctx.lineWidth = Math.max(2, cv.width / 500); ctx.strokeStyle = '#fff'; ctx.stroke();
+    if (z.grid) {
+      ctx.lineWidth = Math.max(1, cv.width / 1600); ctx.strokeStyle = 'rgba(255,255,255,.85)';
+      for (const u2 of gridUnits(z.grid)) { path(u2); ctx.stroke(); }
+    }
   }
   // Étiquettes : nom + « À PRENDRE » / « RÉSERVE » + produits
   const fs = Math.max(18, cv.width / 48);
@@ -1498,7 +1502,11 @@ function drawZone(z, group, root) {
   if (!z.ring) return;
   const st = zoneStatus(z.id);
   const actif = S.adjusting === z.id;
-  const poly = L.polygon(z.ring, { color: actif ? '#ffeb3b' : '#fff', weight: actif ? 3 : 2, fillColor: ZONE_COLORS[st], fillOpacity: 0.5 }).addTo(group);
+  const poly = L.polygon(z.ring, { color: actif ? '#ffeb3b' : '#fff', weight: actif ? 3 : 2, fillColor: ZONE_COLORS[st], fillOpacity: z.grid ? 0.25 : 0.5 }).addTo(group);
+  if (z.grid) {
+    unitLayers[z.id] = L.featureGroup(gridUnits(z.grid).map((r) => L.polygon(r, { color: '#fff', weight: 1, opacity: 0.9, fillColor: ZONE_COLORS[st], fillOpacity: 0.45, interactive: false }))).addTo(group);
+    poly.bringToFront();
+  }
   poly.bindTooltip(`<b>${esc(z.nom)}</b><span class="zl-d">${zoneResume(z.id).slice(0, 3).map((t) => `<br>${esc(t)}`).join('')}</span>`, { permanent: true, direction: 'center', className: `zlabel ${st}` });
   poly.on('click', () => {
     if (S.drawing || S.editing || S.placingGrid || S.adjusting) return;
