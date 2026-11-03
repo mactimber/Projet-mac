@@ -1142,25 +1142,19 @@ async function imagePlan() {
       for (const u2 of gridUnits(z.grid)) { path(u2); ctx.stroke(); }
     }
   }
-  // Étiquettes : nom + « À PRENDRE » / « RÉSERVE » + produits
-  const fs = Math.max(18, cv.width / 48);
-  for (const z of zones) {
+  // Seulement un numéro par zone (la légende est sous le plan)
+  const fs = Math.max(18, cv.width / 42);
+  zones.forEach((z, i) => {
     const st = zoneStatus(z.id);
     const [cx, cy] = P(centreRing(z.ring));
-    const etat = { prendre: '👉 À PRENDRE', reserve: 'RÉSERVE – ne pas toucher', sechage: 'EN SÉCHAGE – ne pas toucher', vide: 'VIDE' }[st];
-    const lignes = [[z.nom, `bold ${fs}px system-ui, sans-serif`, '#000'], [etat, `bold ${fs * 0.8}px system-ui, sans-serif`, ZONE_COLORS[st]],
-      ...zoneResume(z.id).slice(0, 3).map((t) => [t.replace('👉 ', ''), `${fs * 0.72}px system-ui, sans-serif`, '#222'])];
-    const wMax = Math.max(...lignes.map(([t, f]) => { ctx.font = f; return ctx.measureText(t).width; }));
-    const lh = fs * 1.2;
-    const bw = wMax + fs;
-    const bh = lignes.length * lh + fs * 0.4;
-    ctx.globalAlpha = 0.92; ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.roundRect(cx - bw / 2, cy - bh / 2, bw, bh, fs * 0.4); ctx.fill();
-    ctx.globalAlpha = 1; ctx.lineWidth = fs * 0.25; ctx.strokeStyle = ZONE_COLORS[st];
-    ctx.beginPath(); ctx.moveTo(cx - bw / 2, cy - bh / 2 + fs * 0.4); ctx.lineTo(cx - bw / 2, cy + bh / 2 - fs * 0.4); ctx.stroke();
+    const rr = fs * 0.85;
+    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.fillStyle = ZONE_COLORS[st]; ctx.fill();
+    ctx.lineWidth = fs * 0.18; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${fs}px system-ui, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    lignes.forEach(([t, f, c], i) => { ctx.font = f; ctx.fillStyle = c; ctx.fillText(t, cx, cy - bh / 2 + fs * 0.2 + lh * (i + 0.5)); });
-  }
+    ctx.fillText(String(i + 1), cx, cy + fs * 0.05);
+  });
   return cv.toDataURL('image/jpeg', 0.9);
 }
 
@@ -1180,6 +1174,14 @@ async function imprimerFiche() {
       ${entete('Plan des zones de bois de feu')}
       <img class="f-plan" src="${plan}" alt="Plan">
       <div class="f-leg"><span><i style="background:${ZONE_COLORS.prendre}"></i>👉 À prendre : c’est ici qu’on se sert</span><span><i style="background:${ZONE_COLORS.reserve}"></i>Réserve : ne pas toucher</span><span><i style="background:${ZONE_COLORS.sechage}"></i>En séchage : ne pas toucher</span><span><i style="background:${ZONE_COLORS.vide}"></i>Vide</span></div>
+      <table class="f-legende"><thead><tr><th>N°</th><th>Zone</th><th>État</th><th>Contenu</th></tr></thead><tbody>
+      ${zones.filter((z) => z.ring).map((z, i) => {
+        const st = zoneStatus(z.id);
+        const etat = { prendre: '👉 À prendre', reserve: 'Réserve – ne pas toucher', sechage: 'En séchage – ne pas toucher', vide: 'Vide' }[st];
+        const ls = zoneLots(z.id).sort((a, b) => (a.role === 'prendre' ? -1 : 0) - (b.role === 'prendre' ? -1 : 0));
+        return `<tr><td class="f-num"><span style="background:${ZONE_COLORS[st]}">${i + 1}</span></td><td><b>${esc(z.nom)}</b></td><td>${esc(etat)}</td>
+          <td>${ls.map((l) => `${l.role === 'prendre' ? '👉 ' : ''}${qty(l.quantite, l.contenant)} ${esc(l.essence)} ${esc(l.longueur)}`).join('<br>') || '—'}</td></tr>`;
+      }).join('')}</tbody></table>
     </section>` : ''}
     <section class="f-page${plan ? ' f-break' : ''}">
       ${entete('État du stock')}
