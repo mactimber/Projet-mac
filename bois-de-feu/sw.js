@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne.
 
-const APP_CACHE = 'bf-app-v13';
+const APP_CACHE = 'bf-app-v14';
 const TILE_CACHE = 'bf-tiles-v1';
 const MAX_TILES = 6000;
 

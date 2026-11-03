@@ -324,3 +324,7 @@ button.link { border: 0; background: none; text-decoration: underline; min-heigh
 .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
 .btn.big { width: 100%; min-height: 52px; font-size: 17px; }
 .plan-vide p { margin: 6px 0 12px; }
+.adj-row { display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 6px; margin-top: 8px; }
+.adj-row button { min-height: 46px; padding: 0 6px; font-size: 18px; }
+.adj-row #adj-aimant { font-size: 14px; }
+#adj-aimant.on { background: #e3f2e4; border-color: #2e7d32; }
