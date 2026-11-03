@@ -8,14 +8,14 @@ Adresse : https://mactimber.github.io/Projet-mac/bois-de-feu/
 ## Catalogue du triage
 | Essence | Longueurs | Contenants |
 |---|---|---|
-| Foyard | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag ; 33 et 25 cm aussi en caisse |
+| Fayard | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag ; 33 et 25 cm aussi en caisse |
 | Mélèze | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag |
 | Épicéa | 1 m, 50, 33, 25 cm | 1 m en ballot, le reste en big-bag |
 | Frêne | 1 m, 33 cm | ballot / big-bag |
 | Feuillus indigènes | 33 cm | big-bag |
 | Bouleau | 50 cm | big-bag |
 
-Équivalences : big-bag = 1 stère, caisse = 0,7 stère, ballot = 1 stère.
+Équivalences : big-bag = 1 stère, caisse = 0,75 stère, ballot = 1 stère.
 Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 1 × 1 m. Tout se modifie dans **Plus → Catalogue**.
 
 ## Les onglets
@@ -39,7 +39,7 @@ Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 
    (d'abord celle déjà entamée, puis le bois sec le plus ancien, puis l'ordre des zones).
 3. **Entrées** : façonnage par une entreprise externe, livraison de bois prêt / sec acheté,
    ou façonnage par l'équipe. L'entrée crée un nouveau lot (en réserve) ou s'ajoute à un lot existant.
-4. **Plus** : historique, exports CSV (Excel), catalogue (produits vendus, contenants et stères,
+4. **Plus** : historique, exports CSV (Excel), **import d'un inventaire** (CSV : Essence ; Longueur ; Contenant ; Quantité ; État ; Zone), catalogue (produits vendus, contenants et stères,
    entreprises), copie de secours, et activation du module **Commandes et livraisons**
    (désactivé pour l'instant : commandes, liste de chargement, tournée, signature, bon PDF).
 

@@ -18,7 +18,7 @@ const TYPES = {
 const ENTREE_TYPES = ['facon', 'achat', 'propre', 'initial'];
 const STATUTS = { a_planifier: 'À planifier', planifiee: 'Planifiée', livree: 'Livrée – à facturer', facturee: 'Facturée' };
 
-const SETTINGS_VERSION = 3;
+const SETTINGS_VERSION = 4;
 // Dimensions au sol (m) : caisse = palette EUR, big-bag ≈ 1,2 × 1,2, ballot 1 m ≈ 1 × 1.
 const DIMS_DEFAUT = { Caisse: [1.2, 0.8], 'Big-bag': [1.2, 1.2], Ballot: [1, 1] };
 const TOUTES_LONGUEURS = ['1 m', '50 cm', '33 cm', '25 cm'];
@@ -28,9 +28,9 @@ function defaultProduits() {
   const out = [];
   const add = (essence, longueurs) => longueurs.forEach((longueur) => {
     out.push({ essence, longueur, contenant: longueur === '1 m' ? 'Ballot' : 'Big-bag' });
-    if (essence === 'Foyard' && (longueur === '33 cm' || longueur === '25 cm')) out.push({ essence, longueur, contenant: 'Caisse' });
+    if (essence === 'Fayard' && (longueur === '33 cm' || longueur === '25 cm')) out.push({ essence, longueur, contenant: 'Caisse' });
   });
-  add('Foyard', TOUTES_LONGUEURS);
+  add('Fayard', TOUTES_LONGUEURS);
   add('Mélèze', TOUTES_LONGUEURS);
   add('Épicéa', TOUTES_LONGUEURS);
   add('Frêne', ['1 m', '33 cm']);
@@ -40,12 +40,12 @@ function defaultProduits() {
 }
 
 const DEFAULT_CATALOGUE = () => ({
-  essences: ['Foyard', 'Mélèze', 'Épicéa', 'Frêne', 'Feuillus indigènes', 'Bouleau'],
+  essences: ['Fayard', 'Mélèze', 'Épicéa', 'Frêne', 'Feuillus indigènes', 'Bouleau'],
   longueurs: [...TOUTES_LONGUEURS],
   contenants: [
     { nom: 'Ballot', unite: 'ballot', steres: 1, dims: [1, 1] },
     { nom: 'Big-bag', unite: 'bb', steres: 1, dims: [1.2, 1.2] },
-    { nom: 'Caisse', unite: 'caisse', steres: 0.7, dims: [1.2, 0.8] },
+    { nom: 'Caisse', unite: 'caisse', steres: 0.75, dims: [1.2, 0.8] },
   ],
   produits: defaultProduits(),
 });
@@ -1863,6 +1863,12 @@ function renderPlus() {
   </section>
 
   <section class="card">
+    <h2>Importer un inventaire</h2>
+    <p class="hint">Fichier CSV (Excel : « Enregistrer sous → CSV ») avec les colonnes <b>Essence ; Longueur ; Contenant ; Quantité</b>, et si besoin <b>État</b> et <b>Zone</b>. C’est le même format que l’export « Stock ».</p>
+    <label class="btn">⬆ Choisir le fichier d’inventaire<input type="file" accept=".csv,text/csv,text/plain" id="input-inv" hidden></label>
+  </section>
+
+  <section class="card">
     <h2>Recommencer</h2>
     <p class="hint">Le catalogue (produits, contenants, entreprises) est conservé. Faites une copie de secours avant, si vous voulez pouvoir revenir en arrière.</p>
     <div class="row">
@@ -1892,6 +1898,7 @@ function bindPlus(root) {
   $('#csv-cmds', root).onclick = () => exportCSV('commandes');
   $('#btn-backup', root).onclick = backup;
   $('#btn-reset-zones', root).onclick = () => resetData(false);
+  $('#input-inv', root).onchange = (e) => importInventaire(e.target.files[0]);
   $('#btn-reset-all', root).onclick = () => resetData(true);
   $('#input-import', root).onchange = (e) => restore(e.target.files[0]);
 
@@ -1970,6 +1977,105 @@ function exportCSV(kind) {
   }
   const csv = `﻿${rows.map((r) => r.map(cell).join(';')).join('\r\n')}`;
   download(`bois-de-feu_${kind}_${today()}.csv`, csv, 'text/csv;charset=utf-8');
+}
+
+// ---- Import d'un inventaire (CSV)
+
+function lireCSV(txt) {
+  txt = txt.replace(/^﻿/, '');
+  const sep = (txt.split('\n')[0].match(/;/g) || []).length >= (txt.split('\n')[0].match(/,/g) || []).length ? ';' : ',';
+  const rows = [];
+  let row = [''];
+  let q = false;
+  for (let i = 0; i < txt.length; i++) {
+    const ch = txt[i];
+    if (q) {
+      if (ch === '"' && txt[i + 1] === '"') { row[row.length - 1] += '"'; i++; } else if (ch === '"') q = false; else row[row.length - 1] += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === sep) row.push('');
+    else if (ch === '\n') { rows.push(row); row = ['']; } else if (ch !== '\r') row[row.length - 1] += ch;
+  }
+  if (row.some((c) => c.trim())) rows.push(row);
+  return rows.filter((r) => r.some((c) => c.trim()));
+}
+
+const sansAccent = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+function normLongueur(v) {
+  const t = sansAccent(v).replace(/\s/g, '');
+  if (/^(1m|100|100cm|1)$/.test(t)) return '1 m';
+  const n = parseInt(t, 10);
+  return Number.isFinite(n) ? `${n} cm` : String(v).trim();
+}
+
+function trouver(list, v, alias = {}) {
+  const t = sansAccent(v);
+  const a = alias[t] || t;
+  return list.find((x) => sansAccent(x) === a) || list.find((x) => sansAccent(x).startsWith(a.slice(0, 5))) || null;
+}
+
+async function importInventaire(file) {
+  if (!file) return;
+  const st = S.settings;
+  const rows = lireCSV(await file.text());
+  const head = (rows.shift() || []).map(sansAccent);
+  const col = (...names) => head.findIndex((h) => names.some((n) => h.startsWith(n)));
+  const ci = { e: col('essence'), l: col('longueur'), c: col('contenant'), q: col('quantite', 'nombre'), et: col('etat'), z: col('zone', 'lieu'), n: col('remarque', 'note') };
+  if (ci.e < 0 || ci.l < 0 || ci.c < 0 || ci.q < 0) { toast('Colonnes introuvables : il faut Essence, Longueur, Contenant, Quantité', 6000); return; }
+  const lignes = [];
+  const erreurs = [];
+  for (const r of rows) {
+    const q = round(num(r[ci.q]));
+    if (!(q > 0)) continue;
+    const essence = trouver(st.essences, r[ci.e], { foyard: 'fayard', hetre: 'fayard', feuillu: 'feuillus indigenes', 'feuillu indigene': 'feuillus indigenes' }) || String(r[ci.e]).trim();
+    const contenant = trouver(st.contenants.map((c) => c.nom), r[ci.c], { bigbag: 'big-bag', 'big bag': 'big-bag', bb: 'big-bag' });
+    if (!essence || !contenant) { erreurs.push(r.join(' ; ')); continue; }
+    const etatTxt = ci.et >= 0 ? sansAccent(r[ci.et]) : '';
+    const etat = /vert|frais/.test(etatTxt) ? 'vert' : /sech/.test(etatTxt) && !/^sec\b/.test(etatTxt) ? 'sechage' : 'sec';
+    lignes.push({ essence, longueur: normLongueur(r[ci.l]), contenant, quantite: q, etat, zone: ci.z >= 0 ? String(r[ci.z] || '').trim() : '', note: ci.n >= 0 ? String(r[ci.n] || '').trim() : '' });
+  }
+  if (!lignes.length) { toast('Aucune quantité trouvée dans le fichier', 5000); return; }
+  const totSt = lignes.reduce((t, l) => t + steres(l.quantite, l.contenant), 0);
+  const form = openDlg('Importer l’inventaire', `
+    <p><b>${lignes.length} produits</b> · ≈ ${fmtQ(totSt)} stères</p>
+    <div class="hist-wrap"><table class="sum"><tbody>${lignes.map((l) => `<tr><td>${esc(plabel(l))}${l.zone ? ` <span class="muted">· ${esc(l.zone)}</span>` : ''}</td><td class="n">${qty(l.quantite, l.contenant)}</td></tr>`).join('')}</tbody></table></div>
+    ${erreurs.length ? `<p class="alert">${erreurs.length} ligne(s) non reconnue(s) ignorée(s) : ${esc(erreurs.slice(0, 3).join(' | '))}</p>` : ''}
+    <label>Que faire du stock actuel ?<select name="mode">
+      <option value="remplacer">Remplacer tout le stock actuel par cet inventaire</option>
+      <option value="ajouter">Ajouter ces quantités au stock actuel</option></select></label>
+    <p class="hint">Les lots sans zone connue vont dans la zone « À répartir » : déplacez-les ensuite dans la bonne zone.</p>`,
+  '<button type="button" data-close>Annuler</button><span class="spacer"></span><button class="primary">Importer</button>');
+  onSubmit(form, async (f) => {
+    const keys = new Set();
+    if (f.mode === 'remplacer') {
+      for (const l of [...S.lots]) {
+        if (l.quantite > 0) await saveMvt({ type: 'inventaire', lotId: l.id, delta: -l.quantite, note: 'Remplacé par l’import d’inventaire', ...snap(l) });
+        await delLot(l);
+      }
+    }
+    let aRepartir = null;
+    for (const li of lignes) {
+      const p = { essence: li.essence, longueur: li.longueur, contenant: li.contenant };
+      if (!st.essences.includes(p.essence)) st.essences.push(p.essence);
+      if (!st.longueurs.includes(p.longueur)) st.longueurs.push(p.longueur);
+      if (!st.produits.some((x) => pkey(x) === pkey(p))) st.produits.push(p);
+      let z = li.zone && st.lieux.find((x) => sansAccent(x.nom) === sansAccent(li.zone));
+      if (!z && li.zone) { z = { id: uid(), nom: li.zone }; st.lieux.push(z); }
+      if (!z) {
+        aRepartir ||= st.lieux.find((x) => x.nom === 'À répartir') || (st.lieux.push({ id: uid(), nom: 'À répartir', note: 'Bois importé de l’inventaire, à déplacer dans les bonnes zones' }), st.lieux[st.lieux.length - 1]);
+        z = aRepartir;
+      }
+      const lot = { id: uid(), ...p, etat: li.etat, lieu: z.id, quantite: li.quantite, dateMise: '', provenance: `Inventaire ${file.name}`, photos: [], note: li.note, created: nowISO(), role: 'reserve' };
+      await saveLot(lot);
+      await saveMvt({ type: 'inventaire', lotId: lot.id, delta: lot.quantite, note: 'Import d’inventaire', ...snap(lot) });
+      keys.add(pkey(lot));
+    }
+    for (const k of keys) await ensureCourant(k, { announce: false });
+    await saveSettings();
+    dlg().close();
+    toast(`Inventaire importé : ${lignes.length} produits`, 4000);
+    go('stock');
+  });
 }
 
 async function resetData(tout) {
@@ -2072,9 +2178,21 @@ async function load() {
   if ((S.settings.version || 1) < 3) {
     for (const c of S.settings.contenants) if (!c.dims && DIMS_DEFAUT[c.nom]) c.dims = DIMS_DEFAUT[c.nom];
   }
+  [S.lots, S.mvts, S.cmds] = await Promise.all([db.all('lots'), db.all('mouvements'), db.all('commandes')]);
+  if ((S.settings.version || 1) < 4) {
+    // « Foyard » devient « Fayard » (nom utilisé au triage) ; une caisse = 0,75 stère.
+    const ren = (o) => { if (o && o.essence === 'Foyard') { o.essence = 'Fayard'; return true; } return false; };
+    const st = S.settings;
+    st.essences = st.essences.map((e) => (e === 'Foyard' ? 'Fayard' : e));
+    st.produits.forEach(ren);
+    st.seuils = Object.fromEntries(Object.entries(st.seuils || {}).map(([k, v]) => [k.replace(/^Foyard\|/, 'Fayard|'), v]));
+    for (const c of st.contenants) if (c.nom === 'Caisse' && c.steres === 0.7) c.steres = 0.75;
+    for (const l of S.lots) if (ren(l)) await db.put('lots', l);
+    for (const m of S.mvts) if (ren(m)) await db.put('mouvements', m);
+    for (const c of S.cmds) if (c.lignes.map(ren).some(Boolean)) await db.put('commandes', c);
+  }
   S.settings.version = SETTINGS_VERSION;
   if (!kv || kv.value.version !== S.settings.version) await saveSettings();
-  [S.lots, S.mvts, S.cmds] = await Promise.all([db.all('lots'), db.all('mouvements'), db.all('commandes')]);
 }
 
 async function start() {
