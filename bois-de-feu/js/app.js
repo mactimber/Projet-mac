@@ -1103,9 +1103,9 @@ function signaturePad(canvas) {
 
 // ---- Impression : plan des zones (photo) + état du stock
 
-// Dessine la photo de la place avec les zones (recadrée sur les zones).
-// o = { fond: 'normal' | 'pale' | 'blanc', carres: bool, etiquettes: 'noms' | 'numeros' | 'rien' }
-async function imagePlan(o) {
+// ---- Impression du plan : plan général + un plan zoomé par secteur (groupe de zones proches)
+
+async function chargerPhotoPlan() {
   const pl = S.settings.plan;
   if (!pl) return null;
   const u = await photoURL(pl.photo);
@@ -1115,71 +1115,132 @@ async function imagePlan(o) {
   const H = img.naturalHeight;
   const [sw, ne] = planCoins(pl);
   const toPx = ([lat, lng]) => [((lng - sw[1]) / (ne[1] - sw[1])) * W, ((ne[0] - lat) / (ne[0] - sw[0])) * H];
-  const zones = S.settings.lieux.filter((z) => z.ring);
-  let x0 = 0; let y0 = 0; let x1 = W; let y1 = H;
-  if (zones.length) {
-    const pts = zones.flatMap((z) => z.ring.map(toPx));
-    x0 = Math.min(...pts.map((q) => q[0])); x1 = Math.max(...pts.map((q) => q[0]));
-    y0 = Math.min(...pts.map((q) => q[1])); y1 = Math.max(...pts.map((q) => q[1]));
-    const m = Math.max(60, 0.08 * Math.max(x1 - x0, y1 - y0));
-    x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W, x1 + m); y1 = Math.min(H, y1 + m);
+  const mpp = pl.mpp * (pl.w / W); // mètres par pixel de la photo
+  return { img, W, H, toPx, mpp };
+}
+
+const bboxPx = (pts) => ({ x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) });
+
+// Regroupe les zones proches (moins de `seuil` mètres entre leurs contours) en secteurs.
+function secteurs(ph, seuil = 12) {
+  const zs = S.settings.lieux.filter((z) => z.ring).map((z) => ({ z, b: bboxPx(z.ring.map(ph.toPx)) }));
+  const par = zs.map((_, i) => i);
+  const racine = (i) => (par[i] === i ? i : (par[i] = racine(par[i])));
+  const s = seuil / ph.mpp;
+  for (let i = 0; i < zs.length; i++) {
+    for (let j = i + 1; j < zs.length; j++) {
+      const a = zs[i].b; const b = zs[j].b;
+      const dx = Math.max(0, a.x0 - b.x1, b.x0 - a.x1);
+      const dy = Math.max(0, a.y0 - b.y1, b.y0 - a.y1);
+      if (Math.hypot(dx, dy) < s) par[racine(i)] = racine(j);
+    }
   }
-  const cw = x1 - x0;
-  const ch = y1 - y0;
-  const k = Math.min(3600 / cw, 3600 / ch, 6);
+  const groupes = new Map();
+  zs.forEach((e, i) => { const r = racine(i); if (!groupes.has(r)) groupes.set(r, []); groupes.get(r).push(e); });
+  return [...groupes.values()]
+    .map((g) => ({ zones: g.map((e) => e.z), b: { x0: Math.min(...g.map((e) => e.b.x0)), y0: Math.min(...g.map((e) => e.b.y0)), x1: Math.max(...g.map((e) => e.b.x1)), y1: Math.max(...g.map((e) => e.b.y1)) } }))
+    .sort((a, b) => a.b.y0 - b.b.y0 || a.b.x0 - b.b.x0);
+}
+
+// Agrandit un cadre (pixels photo) d'une marge en mètres et d'une taille minimale.
+function cadre(ph, b, margeM, minM) {
+  const m = margeM / ph.mpp;
+  let { x0, y0, x1, y1 } = { x0: b.x0 - m, y0: b.y0 - m, x1: b.x1 + m, y1: b.y1 + m };
+  const min = minM / ph.mpp;
+  if (x1 - x0 < min) { const c = (x0 + x1) / 2; x0 = c - min / 2; x1 = c + min / 2; }
+  if (y1 - y0 < min) { const c = (y0 + y1) / 2; y0 = c - min / 2; y1 = c + min / 2; }
+  return { x0: Math.max(0, x0), y0: Math.max(0, y0), x1: Math.min(ph.W, x1), y1: Math.min(ph.H, y1) };
+}
+
+// Taille d'impression (mm) d'une image dans une boîte.
+const ajuster = (w, h, maxW, maxH) => { const s = Math.min(maxW / w, maxH / h); return [w * s, h * s]; };
+
+// Dessine un plan (cadre `c` en pixels photo) à imprimer dans maxW × maxH mm.
+function dessinerPlan(ph, c, o, maxW, maxH, extra = {}) {
+  const cw = c.x1 - c.x0;
+  const ch = c.y1 - c.y0;
+  const k = Math.min(3400 / cw, 3400 / ch, 14);
   const cv = document.createElement('canvas');
   cv.width = Math.round(cw * k);
   cv.height = Math.round(ch * k);
   const ctx = cv.getContext('2d');
+  const [wmm] = ajuster(cv.width, cv.height, maxW, maxH);
+  const pxmm = cv.width / wmm; // pixels du dessin par mm de papier
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, cv.width, cv.height);
   if (o.fond !== 'blanc') {
-    ctx.drawImage(img, x0, y0, cw, ch, 0, 0, cv.width, cv.height);
+    ctx.drawImage(ph.img, c.x0, c.y0, cw, ch, 0, 0, cv.width, cv.height);
     if (o.fond === 'pale') { ctx.globalAlpha = 0.6; ctx.fillRect(0, 0, cv.width, cv.height); ctx.globalAlpha = 1; }
   }
-  const P = (ll) => { const [x, y] = toPx(ll); return [(x - x0) * k, (y - y0) * k]; };
+  const P = (ll) => { const [x, y] = ph.toPx(ll); return [(x - c.x0) * k, (y - c.y0) * k]; };
   const path = (ring) => { ctx.beginPath(); ring.forEach((ll, i) => { const [x, y] = P(ll); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); };
-  const trait = Math.max(2, cv.width / 600);
+  const zones = S.settings.lieux.filter((z) => z.ring);
   for (const z of zones) {
     const st = zoneStatus(z.id);
-    ctx.globalAlpha = 0.75; ctx.fillStyle = ZONE_COLORS[st]; path(z.ring); ctx.fill();
-    ctx.globalAlpha = 1; ctx.lineWidth = trait; ctx.strokeStyle = '#222'; ctx.stroke();
+    ctx.globalAlpha = 0.85; ctx.fillStyle = ZONE_COLORS[st]; path(z.ring); ctx.fill();
+    ctx.globalAlpha = 1; ctx.lineWidth = Math.max(1.5, 0.35 * pxmm); ctx.strokeStyle = '#111'; ctx.stroke();
     if (o.carres && z.grid) {
-      ctx.lineWidth = Math.max(1, cv.width / 2000); ctx.strokeStyle = 'rgba(255,255,255,.7)';
+      ctx.lineWidth = Math.max(1, 0.15 * pxmm); ctx.strokeStyle = 'rgba(255,255,255,.75)';
       for (const u2 of gridUnits(z.grid)) { path(u2); ctx.stroke(); }
     }
   }
+  // Noms écrits dans le sens de la zone, à la taille qui tient dedans
   if (o.etiquettes !== 'rien') {
-    const fs = Math.max(18, cv.width / 55);
-    zones.forEach((z, i) => {
+    const fsMin = 2.3 * pxmm; // au moins 2,3 mm de haut sur le papier
+    for (const z of zones) {
       const st = zoneStatus(z.id);
       const [cx, cy] = P(centreRing(z.ring));
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      if (o.etiquettes === 'numeros') {
-        ctx.beginPath(); ctx.arc(cx, cy, fs * 0.85, 0, Math.PI * 2);
-        ctx.fillStyle = '#fff'; ctx.fill();
-        ctx.lineWidth = fs * 0.15; ctx.strokeStyle = ZONE_COLORS[st]; ctx.stroke();
-        ctx.fillStyle = '#000'; ctx.font = `bold ${fs}px system-ui, sans-serif`;
-        ctx.fillText(String(i + 1), cx, cy + fs * 0.05);
+      let lPx; let dPx; let rot;
+      if (z.grid) {
+        const g = gridSize(z.grid);
+        lPx = (g.L / ph.mpp) * k; dPx = (g.D / ph.mpp) * k;
+        rot = ((z.grid.angle - 90) * Math.PI) / 180;
+        if (dPx > lPx) { [lPx, dPx] = [dPx, lPx]; rot += Math.PI / 2; }
       } else {
-        const t = `${st === 'prendre' ? '👉 ' : ''}${z.nom}`;
-        ctx.font = `bold ${fs}px system-ui, sans-serif`;
-        const w = ctx.measureText(t).width + fs * 0.8;
-        ctx.fillStyle = 'rgba(255,255,255,.93)';
-        ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - fs * 0.75, w, fs * 1.5, fs * 0.3); ctx.fill();
-        ctx.lineWidth = fs * 0.12; ctx.strokeStyle = ZONE_COLORS[st]; ctx.stroke();
-        ctx.fillStyle = '#000';
-        ctx.fillText(t, cx, cy + fs * 0.05);
+        const bb = bboxPx(z.ring.map(P));
+        lPx = bb.x1 - bb.x0; dPx = bb.y1 - bb.y0; rot = 0;
+        if (dPx > lPx) { [lPx, dPx] = [dPx, lPx]; rot = Math.PI / 2; }
       }
-    });
+      while (rot > Math.PI / 2) rot -= Math.PI;
+      while (rot <= -Math.PI / 2) rot += Math.PI;
+      const t = `${st === 'prendre' ? '► ' : ''}${z.nom}`;
+      ctx.font = 'bold 100px system-ui, sans-serif';
+      const w100 = ctx.measureText(t).width;
+      const fs = Math.min(dPx * 0.62, (lPx * 0.94 * 100) / w100, 9 * pxmm);
+      if (fs < fsMin && extra.cacherPetits) continue;
+      const f = Math.max(fs, fsMin);
+      ctx.save();
+      ctx.translate(cx, cy); ctx.rotate(rot);
+      ctx.font = `bold ${f}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round'; ctx.lineWidth = f * 0.22; ctx.strokeStyle = 'rgba(0,0,0,.85)';
+      ctx.strokeText(t, 0, f * 0.04);
+      ctx.fillStyle = '#fff'; ctx.fillText(t, 0, f * 0.04);
+      ctx.restore();
+    }
+  }
+  // Cadres des secteurs (plan général)
+  for (const [i, sc] of (extra.secteurs || []).entries()) {
+    const m = 1.5 / ph.mpp;
+    const x = (sc.b.x0 - m - c.x0) * k; const y = (sc.b.y0 - m - c.y0) * k;
+    const w = (sc.b.x1 - sc.b.x0 + 2 * m) * k; const h = (sc.b.y1 - sc.b.y0 + 2 * m) * k;
+    ctx.setLineDash([2.5 * pxmm, 1.5 * pxmm]); ctx.lineWidth = 0.6 * pxmm; ctx.strokeStyle = '#000';
+    ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    const r = 4 * pxmm;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = '#000'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${r * 1.2}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), x, y + r * 0.06);
   }
   return { url: cv.toDataURL('image/jpeg', 0.9), w: cv.width, h: cv.height };
 }
 
-const PRINT_DEFAUT = { plan: true, legende: true, stock: true, detail: false, format: 'A4', orientation: 'auto', fond: 'pale', carres: false, etiquettes: 'noms' };
+const PRINT_DEFAUT = { general: true, secteurs: true, stock: false, detail: false, format: 'A3', orientation: 'auto', fond: 'pale', carres: false, etiquettes: 'noms' };
 
 function lirePrefsImpression() {
-  try { return { ...PRINT_DEFAUT, ...JSON.parse(localStorage.getItem('bf-print') || '{}') }; } catch { return { ...PRINT_DEFAUT }; }
+  try {
+    const v = JSON.parse(localStorage.getItem('bf-print') || '{}');
+    return { ...PRINT_DEFAUT, ...v, ...(v.general === undefined ? { general: true, secteurs: true } : {}) };
+  } catch { return { ...PRINT_DEFAUT }; }
 }
 
 // Fenêtre : que veut-on imprimer, et en quel format ?
@@ -1190,26 +1251,26 @@ function imprimerFiche() {
   const rad = (n, v, t) => `<label class="check big-check"><input type="radio" name="${n}" value="${v}" ${o[n] === v ? 'checked' : ''}> ${t}</label>`;
   const form = openDlg('Imprimer', `
     <h3>Que voulez-vous imprimer ?</h3>
-    ${pl ? ck('plan', 'Le plan des zones') + ck('legende', 'La liste des zones sous le plan') : '<p class="hint">Pas de photo de la place : seul le stock peut être imprimé.</p>'}
+    ${pl ? ck('general', 'Le plan général (toute la place, secteurs numérotés)') + ck('secteurs', 'Un plan zoomé par secteur (noms des zones lisibles)') : '<p class="hint">Pas de photo de la place : seul le stock peut être imprimé.</p>'}
     ${ck('stock', 'Le tableau du stock (par produit)')}
     ${ck('detail', 'Le détail zone par zone')}
     ${pl ? `<h3>Plan</h3>
     <div class="grid2">
       <label>Fond<select name="fond">${options([{ v: 'pale', t: 'Photo pâle (conseillé)' }, { v: 'normal', t: 'Photo normale' }, { v: 'blanc', t: 'Sans photo' }], o.fond)}</select></label>
-      <label>Sur les zones<select name="etiquettes">${options([{ v: 'noms', t: 'Le nom de la zone' }, { v: 'numeros', t: 'Un numéro' }, { v: 'rien', t: 'Rien (couleur seule)' }], o.etiquettes)}</select></label>
+      <label>Sur les zones<select name="etiquettes">${options([{ v: 'noms', t: 'Le nom de la zone' }, { v: 'rien', t: 'Rien (couleur seule)' }], o.etiquettes === 'numeros' ? 'noms' : o.etiquettes)}</select></label>
     </div>
     ${ck('carres', 'Dessiner les contenants (petits carrés)')}` : ''}
     <h3>Papier</h3>
     <div class="row">${rad('format', 'A4', 'A4')}${rad('format', 'A3', 'A3')}</div>
-    <div class="row">${rad('orientation', 'auto', 'Automatique')}${rad('orientation', 'portrait', 'Portrait')}${rad('orientation', 'paysage', 'Paysage')}</div>
+    <div class="row">${rad('orientation', 'auto', 'Automatique (conseillé)')}${rad('orientation', 'portrait', 'Portrait')}${rad('orientation', 'paysage', 'Paysage')}</div>
     <p class="hint">Dans la fenêtre d’impression, choisissez le même format de papier (A4 ou A3).</p>`,
   '<button type="button" data-close>Annuler</button><span class="spacer"></span><button class="primary">🖨 Imprimer</button>');
   onSubmit(form, async (f) => {
     const opts = {
-      plan: pl && !!f.plan, legende: pl && !!f.legende, stock: !!f.stock, detail: !!f.detail,
-      format: f.format || 'A4', orientation: f.orientation || 'auto', fond: f.fond || o.fond, carres: !!f.carres, etiquettes: f.etiquettes || o.etiquettes,
+      general: pl && !!f.general, secteurs: pl && !!f.secteurs, stock: !!f.stock, detail: !!f.detail,
+      format: f.format || 'A3', orientation: f.orientation || 'auto', fond: f.fond || o.fond, carres: !!f.carres, etiquettes: f.etiquettes || 'noms',
     };
-    if (!opts.plan && !opts.legende && !opts.stock && !opts.detail) { toast('Cochez au moins un élément'); return; }
+    if (!opts.general && !opts.secteurs && !opts.stock && !opts.detail) { toast('Cochez au moins un élément'); return; }
     try { localStorage.setItem('bf-print', JSON.stringify(opts)); } catch { /* */ }
     dlg().close();
     await lancerImpression(opts);
@@ -1217,69 +1278,74 @@ function imprimerFiche() {
 }
 
 async function lancerImpression(o) {
-  toast('Préparation de l’impression…', 3000);
+  toast('Préparation de l’impression…', 4000);
   const t = S.settings.triage;
   const date = new Date().toLocaleDateString('fr-CH', { day: 'numeric', month: 'long', year: 'numeric' });
-  const rows = resume();
-  const plan = o.plan ? await imagePlan(o) : null;
-  let totSt = 0;
-  for (const r of rows) totSt += steres(r.total, r.p.contenant);
-  const zones = S.settings.lieux;
-  const zPlan = zones.filter((z) => z.ring);
-  // Format de page
-  let pw = o.format === 'A3' ? 297 : 210;
-  let ph = o.format === 'A3' ? 420 : 297;
-  const paysage = o.orientation === 'paysage' || (o.orientation === 'auto' && plan && plan.w > plan.h);
-  if (paysage) [pw, ph] = [ph, pw];
   const marge = 10;
-  let style = $('#page-style');
-  if (!style) { style = document.createElement('style'); style.id = 'page-style'; document.head.appendChild(style); }
-  style.textContent = `@media print { @page { size: ${o.format} ${paysage ? 'landscape' : 'portrait'}; margin: ${marge}mm; } }`;
-  window.addEventListener('afterprint', () => { style.textContent = ''; }, { once: true });
-  const lignesLeg = o.legende ? Math.ceil(zPlan.length / (paysage ? 3 : 2)) : 0;
-  const hPlan = Math.max(80, ph - 2 * marge - 16 - 8 - (o.legende ? 6 + lignesLeg * 6 : 0));
-  const wPlan = pw - 2 * marge;
-  const reserves = (k) => [...new Set(S.lots.filter((l) => pkey(l) === k && l.quantite > 0 && l.role !== 'prendre').map((l) => lieuNom(l.lieu)))];
+  const A = o.format === 'A3' ? [297, 420] : [210, 297];
+  const dimsPage = (paysage) => (paysage ? [A[1], A[0]] : A);
+  const choisirSens = (w, h) => (o.orientation === 'auto' ? w > h : o.orientation === 'paysage');
   const entete = (titre) => `<header><img src="img/logo-triage.jpg" alt=""><div><b>${esc(t.nom)}</b><br>${esc(titre)} · ${esc(date)}</div></header>`;
-  const etatTxt = { prendre: '👉 À prendre', reserve: 'Réserve', sechage: 'En séchage', vide: 'Vide' };
-  const qteZone = (z) => {
-    const ls = zoneLots(z.id);
-    if (!ls.length) return '';
-    if (ls.length === 1) return `${fmtQ(ls[0].quantite)} ${ls[0].quantite > 1 ? pluriel(ls[0].contenant) : ls[0].contenant.toLowerCase()}`;
-    return ls.map((l) => `${fmtQ(l.quantite)} ${shortProd(l)}`).join(', ');
-  };
+  const legende = `<div class="f-leg"><span><i style="background:${ZONE_COLORS.prendre}"></i>► À prendre : on se sert ici</span><span><i style="background:${ZONE_COLORS.reserve}"></i>Réserve : ne pas toucher</span><span><i style="background:${ZONE_COLORS.sechage}"></i>En séchage : ne pas toucher</span><span><i style="background:${ZONE_COLORS.vide}"></i>Vide</span></div>`;
   const pages = [];
-  if (plan || o.legende) {
-    pages.push(`<section class="f-page">
-      ${entete('Plan des zones de bois de feu')}
-      ${plan ? `<img class="f-plan" src="${plan.url}" alt="Plan" style="max-width:${wPlan}mm;max-height:${hPlan}mm">
-      <div class="f-leg"><span><i style="background:${ZONE_COLORS.prendre}"></i>👉 À prendre : on se sert ici</span><span><i style="background:${ZONE_COLORS.reserve}"></i>Réserve : ne pas toucher</span><span><i style="background:${ZONE_COLORS.sechage}"></i>En séchage : ne pas toucher</span><span><i style="background:${ZONE_COLORS.vide}"></i>Vide</span></div>` : ''}
-      ${o.legende ? `<div class="f-liste" style="columns:${paysage ? 3 : 2}">${zPlan.map((z, i) => {
-        const st = zoneStatus(z.id);
-        return `<div class="f-li"><span class="f-pt" style="background:${ZONE_COLORS[st]}">${o.etiquettes === 'numeros' ? i + 1 : ''}</span><b>${esc(z.nom)}</b> <span class="f-etat">${esc(etatTxt[st])}${qteZone(z) ? ` · ${esc(qteZone(z))}` : ''}</span></div>`;
-      }).join('')}</div>` : ''}
-    </section>`);
+  const pagePlan = (titre, plan, paysage) => {
+    const [pw, ph2] = dimsPage(paysage);
+    const [w, h] = ajuster(plan.w, plan.h, pw - 2 * marge, ph2 - 2 * marge - 26);
+    return `<section class="f-page" style="page:${paysage ? 'pl' : 'pp'}">${entete(titre)}
+      <img class="f-plan" src="${plan.url}" alt="" style="width:${w.toFixed(1)}mm;height:${h.toFixed(1)}mm">${legende}</section>`;
+  };
+  const ph = (o.general || o.secteurs) ? await chargerPhotoPlan() : null;
+  if (ph) {
+    const secs = secteurs(ph);
+    if (o.general) {
+      const b = secs.length ? cadre(ph, { x0: Math.min(...secs.map((s2) => s2.b.x0)), y0: Math.min(...secs.map((s2) => s2.b.y0)), x1: Math.max(...secs.map((s2) => s2.b.x1)), y1: Math.max(...secs.map((s2) => s2.b.y1)) }, 8, 30) : { x0: 0, y0: 0, x1: ph.W, y1: ph.H };
+      const pay = choisirSens(b.x1 - b.x0, b.y1 - b.y0);
+      const [pw, ph2] = dimsPage(pay);
+      const plan = dessinerPlan(ph, b, o, pw - 2 * marge, ph2 - 2 * marge - 26, { secteurs: secs.length > 1 ? secs : [], cacherPetits: true });
+      pages.push(pagePlan(secs.length > 1 ? 'Plan général – les numéros renvoient aux pages des secteurs' : 'Plan des zones', plan, pay));
+    }
+    if (o.secteurs && (secs.length > 1 || !o.general)) {
+      secs.forEach((sc, i) => {
+        const b = cadre(ph, sc.b, 2, 12);
+        const pay = choisirSens(b.x1 - b.x0, b.y1 - b.y0);
+        const [pw, ph2] = dimsPage(pay);
+        const plan = dessinerPlan(ph, b, o, pw - 2 * marge, ph2 - 2 * marge - 26);
+        pages.push(pagePlan(`Secteur ${i + 1} · ${sc.zones.length} zone${sc.zones.length > 1 ? 's' : ''}`, plan, pay));
+      });
+    }
   }
   if (o.stock || o.detail) {
-    pages.push(`<section class="f-page${pages.length ? ' f-break' : ''}">
+    const rows = resume();
+    let totSt = 0;
+    for (const r of rows) totSt += steres(r.total, r.p.contenant);
+    const reserves = (k) => [...new Set(S.lots.filter((l) => pkey(l) === k && l.quantite > 0 && l.role !== 'prendre').map((l) => lieuNom(l.lieu)))];
+    pages.push(`<section class="f-page" style="page:pp">
       ${entete('État du stock')}
       <h1>Stock au ${esc(date)} <small>≈ ${fmtQ(totSt)} stères</small></h1>
-      ${o.stock ? `<table><thead><tr><th>Produit</th><th class="n">Quantité</th><th class="n">≈ stères</th><th>👉 Prendre en</th><th>Réserves</th></tr></thead><tbody>
+      ${o.stock ? `<table><thead><tr><th>Produit</th><th class="n">Quantité</th><th class="n">≈ stères</th><th>► Prendre en</th><th>Réserves</th></tr></thead><tbody>
       ${rows.filter((r) => r.total > 0).map((r) => { const c = lotCourant(r.k); return `<tr><td><b>${esc(r.p.essence)} ${esc(r.p.longueur)}</b> ${esc(r.p.contenant)}${r.autre ? `<br><small>dont ${fmtQ(r.autre)} en séchage / vert</small>` : ''}</td>
         <td class="n">${qty(r.total, r.p.contenant)}</td><td class="n">${fmtQ(steres(r.total, r.p.contenant))}</td>
         <td><b>${c ? esc(lieuNom(c.lieu)) : '—'}</b></td><td>${esc(reserves(r.k).join(', ') || '—')}</td></tr>`; }).join('')}
       </tbody></table>` : ''}
       ${o.detail ? `<h2>Détail par zone</h2>
-      <div class="f-zones">${zones.map((z) => {
+      <div class="f-zones">${S.settings.lieux.map((z) => {
         const ls = zoneLots(z.id).sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr'));
         const st = zoneStatus(z.id);
-        return `<div class="f-zone"><h3><i style="background:${ZONE_COLORS[st]}"></i>${esc(z.nom)}${z.grid ? ` <small>· ${esc(gridText(z.grid).split(' (')[0])}</small>` : ''}</h3>
-          ${ls.length ? `<ul>${ls.map((l) => `<li>${l.role === 'prendre' ? '👉 ' : ''}<b>${qty(l.quantite, l.contenant)}</b> ${esc(l.essence)} ${esc(l.longueur)} ${esc(l.contenant)}${l.etat !== 'sec' ? ` <small>(${esc(ETATS[l.etat])})</small>` : ''}</li>`).join('')}</ul>` : '<p><small>Vide</small></p>'}
+        return `<div class="f-zone"><h3><i style="background:${ZONE_COLORS[st]}"></i>${esc(z.nom)}</h3>
+          ${ls.length ? `<ul>${ls.map((l) => `<li>${l.role === 'prendre' ? '► ' : ''}<b>${qty(l.quantite, l.contenant)}</b> ${esc(l.essence)} ${esc(l.longueur)} ${esc(l.contenant)}${l.etat !== 'sec' ? ` <small>(${esc(ETATS[l.etat])})</small>` : ''}</li>`).join('')}</ul>` : '<p><small>Vide</small></p>'}
         </div>`;
       }).join('')}</div>` : ''}
     </section>`);
   }
-  $('#print').innerHTML = `<div class="fiche fmt-${o.format}">${pages.join('')}</div>`;
+  let style = $('#page-style');
+  if (!style) { style = document.createElement('style'); style.id = 'page-style'; document.head.appendChild(style); }
+  style.textContent = `@media print {
+    @page { size: ${o.format} portrait; margin: ${marge}mm; }
+    @page pp { size: ${o.format} portrait; margin: ${marge}mm; }
+    @page pl { size: ${o.format} landscape; margin: ${marge}mm; }
+  }`;
+  window.addEventListener('afterprint', () => { style.textContent = ''; }, { once: true });
+  $('#print').innerHTML = `<div class="fiche fmt-${o.format}">${pages.map((pg, i) => (i ? pg.replace('class="f-page"', 'class="f-page f-break"') : pg)).join('')}</div>`;
   await Promise.all($$('img', $('#print')).map((im) => (im.complete ? null : new Promise((r) => { im.onload = r; im.onerror = r; }))));
   window.print();
 }
