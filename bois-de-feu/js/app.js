@@ -80,6 +80,7 @@ const S = {
   placingGrid: null, // zone en rangées à placer (coin + alignement)
   adjusting: null, // zone en rangées à ajuster
   pas: 0.1,
+  aimant: (() => { try { return localStorage.getItem('bf-aimant') !== 'non'; } catch { return true; } })(),
   base: (() => { try { return localStorage.getItem('bf-base') || 'plan'; } catch { return 'plan'; } })(),
   mapView: null,
 };
@@ -1374,17 +1375,35 @@ function gridAuCentre(g, c) {
 
 // Aimant : colle la zone à une zone voisine (même alignement, espace habituel) si elle en est proche.
 function aimanter(z) {
+  if (!S.aimant) return null;
   const ecart = S.settings.ecartZones ?? 0.5;
   const c = gridCentre(z.grid);
-  const { L, D } = gridSize(z.grid);
-  const seuil = Math.max(3, Math.max(L, D) / 2);
+  const nz = gridSize(z.grid);
+  // Aimant souple : fixe l'alignement et l'espace avec la zone voisine,
+  // mais laisse glisser la zone le long de celle-ci.
   let best = null;
   for (const o of S.settings.lieux) {
     if (o.id === z.id || !o.grid?.origin) continue;
+    const t = o.grid.angle * Math.PI / 180;
+    const sd = o.grid.side || 1;
+    const oz = gridSize(o.grid);
+    const libre = Math.max(nz.L, nz.D, oz.L, oz.D);
     for (const ou of ['apres', 'avant', 'derriere', 'devant']) {
       const cand = gridApres(z.grid, o, ou, ecart);
-      const d = distM(c, gridCentre(cand));
-      if (d < seuil && (!best || d < best.d)) best = { d, cand, o };
+      const cc = gridCentre(cand);
+      const e = (c[1] - cc[1]) * M_LAT * Math.cos(cc[0] * Math.PI / 180);
+      const n = (c[0] - cc[0]) * M_LAT;
+      const u = e * Math.sin(t) + n * Math.cos(t); // le long de la ligne
+      const v = (e * Math.cos(t) - n * Math.sin(t)) * sd; // en profondeur
+      const enLigne = ou === 'apres' || ou === 'avant';
+      const d = Math.abs(enLigne ? u : v); // écart à l'espace voulu
+      const glisse = enLigne ? v : u; // décalage laissé libre
+      if (d > 1 || Math.abs(glisse) > libre) continue;
+      if (!best || d < best.d) {
+        const de = enLigne ? glisse * sd * Math.cos(t) : glisse * Math.sin(t);
+        const dn = enLigne ? -glisse * sd * Math.sin(t) : glisse * Math.cos(t);
+        best = { d, o, cand: { ...cand, origin: fixLL(offsetLL(cand.origin, de, dn)) } };
+      }
     }
   }
   if (best) z.grid = best.cand;
@@ -1424,12 +1443,18 @@ function renderPlace() {
     ${editing ? `<p class="placing-bar"><span>Glissez les points de « <b>${esc(editing.nom)}</b> » pour corriger le contour.</span><button type="button" class="small primary" id="end-edit">Terminer</button></p>` : ''}
     ${placing ? `<p class="placing-bar"><span>« <b>${esc(placing.nom)}</b> » : <b>touchez ${pl ? 'la photo' : 'la carte'}</b> à l’endroit de la zone.</span><button type="button" class="small" id="cancel-place">Annuler</button></p>` : ''}
     ${adjusting ? `<div class="adjust-bar">
-        <p class="m0"><b>${esc(adjusting.nom)}</b> : glissez la zone avec le doigt. Près d’une autre zone, elle s’y colle toute seule (${fmtQ(S.settings.ecartZones ?? 0.5)} m d’espace).</p>
-        <div class="row mt">
+        <p class="m0"><b>${esc(adjusting.nom)}</b> : glissez la zone avec le doigt, puis affinez avec les flèches (10 cm).</p>
+        <div class="adj-row">
+          <button type="button" data-mv="w" aria-label="Gauche">◀</button><button type="button" data-mv="n" aria-label="Haut">▲</button>
+          <button type="button" data-mv="s" aria-label="Bas">▼</button><button type="button" data-mv="e" aria-label="Droite">▶</button>
+          <button type="button" id="adj-aimant" class="${S.aimant ? 'on' : ''}">🧲 ${S.aimant ? 'Aimant oui' : 'Aimant non'}</button>
+        </div>
+        <div class="adj-row">
           <button type="button" data-rot="-5">⟲ 5°</button><button type="button" data-rot="-1">⟲ 1°</button>
           <button type="button" data-rot="1">1° ⟳</button><button type="button" data-rot="5">5° ⟳</button>
-          <span class="spacer"></span><button type="button" class="primary" id="adj-end">✓ Terminer</button>
         </div>
+        <p class="hint m0">${S.aimant ? `Aimant : lâchée tout près d’une autre zone, elle s’y colle (${fmtQ(S.settings.ecartZones ?? 0.5)} m d’espace).` : 'Aimant désactivé : la zone reste exactement où vous la lâchez.'}</p>
+        <div class="row mt"><span class="spacer"></span><button type="button" class="primary" id="adj-end">✓ Terminer</button></div>
       </div>` : ''}
     <div id="zmap" class="zmap ${drawing || placing || S.calibrating ? 'placing' : ''}"></div>
     <div class="legend"><span><i class="dot prendre"></i>À prendre</span><span><i class="dot reserve"></i>Réserve</span><span><i class="dot sechage"></i>En séchage / vert</span><span><i class="dot vide"></i>Vide</span></div>
@@ -1635,6 +1660,21 @@ function bindPlace(root) {
       });
     };
     arm();
+    $$('[data-mv]', root).forEach((b) => b.addEventListener('click', () => {
+      const d = { n: [0, 0.1], s: [0, -0.1], e: [0.1, 0], w: [-0.1, 0] }[b.dataset.mv];
+      z.grid.origin = fixLL(offsetLL(z.grid.origin, d[0], d[1]));
+      z.ring = gridRing(z.grid);
+      drawZone(z, group, root);
+      arm();
+    }));
+    $('#adj-aimant', root).onclick = (e) => {
+      S.aimant = !S.aimant;
+      try { localStorage.setItem('bf-aimant', S.aimant ? 'oui' : 'non'); } catch { /* */ }
+      e.currentTarget.classList.toggle('on', S.aimant);
+      e.currentTarget.textContent = `🧲 ${S.aimant ? 'Aimant oui' : 'Aimant non'}`;
+      const h = e.currentTarget.closest('.adjust-bar').querySelector('.hint');
+      if (h) h.textContent = S.aimant ? 'Aimant : lâchée tout près d’une autre zone, elle s’y colle.' : 'Aimant désactivé : la zone reste exactement où vous la lâchez.';
+    };
     $$('[data-rot]', root).forEach((b) => b.addEventListener('click', () => {
       const c = gridCentre(z.grid);
       z.grid.angle = (z.grid.angle + Number(b.dataset.rot) + 360) % 360;
