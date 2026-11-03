@@ -415,7 +415,7 @@ function renderStock() {
   </div>
 
   <section class="card">
-    <h2>Stock total ${S.fLieu ? `<small>· ${esc(lieuNom(S.fLieu))}</small>` : ''}</h2>
+    <div class="row between"><h2>Stock total ${S.fLieu ? `<small>· ${esc(lieuNom(S.fLieu))}</small>` : ''}</h2><button type="button" class="small" id="btn-print-stock">🖨 Imprimer</button></div>
     ${totSt ? `<p class="totst">≈ <b>${fmtQ(totSt)} stères</b>${secSt !== totSt ? ` <span class="muted">dont ${fmtQ(secSt)} st secs</span>` : ''}</p>` : ''}
     ${nbAlertes ? `<p class="alert">⚠ ${nbAlertes} produit${nbAlertes > 1 ? 's' : ''} en stock bas</p>` : ''}
     ${rows.length ? `<table class="sum">
@@ -482,6 +482,7 @@ function bindStock(root) {
   $('#f-etat', root).onchange = (e) => { S.fEtat = e.target.value; render(); };
   $('#f-empty', root).onchange = (e) => { S.showEmpty = e.target.checked; render(); };
   $('#btn-new-lot', root).onclick = () => lotDialog(null, { lieu: S.fLieu });
+  $('#btn-print-stock', root).onclick = () => imprimerFiche();
   $$('tr[data-seuil]', root).forEach((tr) => tr.addEventListener('click', () => seuilDialog(tr.dataset.seuil)));
   bindLots(root);
 }
@@ -1099,6 +1100,108 @@ function signaturePad(canvas) {
   };
 }
 
+// ---- Impression : plan des zones (photo) + état du stock
+
+// Dessine la photo de la place avec les zones (recadrée sur les zones) et renvoie une image.
+async function imagePlan() {
+  const pl = S.settings.plan;
+  if (!pl) return null;
+  const u = await photoURL(pl.photo);
+  const img = await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = u; });
+  if (!img) return null;
+  const W = img.naturalWidth;
+  const H = img.naturalHeight;
+  const [sw, ne] = planCoins(pl);
+  const toPx = ([lat, lng]) => [((lng - sw[1]) / (ne[1] - sw[1])) * W, ((ne[0] - lat) / (ne[0] - sw[0])) * H];
+  const zones = S.settings.lieux.filter((z) => z.ring);
+  let x0 = 0; let y0 = 0; let x1 = W; let y1 = H;
+  if (zones.length) {
+    const pts = zones.flatMap((z) => z.ring.map(toPx));
+    x0 = Math.min(...pts.map((q) => q[0])); x1 = Math.max(...pts.map((q) => q[0]));
+    y0 = Math.min(...pts.map((q) => q[1])); y1 = Math.max(...pts.map((q) => q[1]));
+    const m = Math.max(80, 0.15 * Math.max(x1 - x0, y1 - y0));
+    x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W, x1 + m); y1 = Math.min(H, y1 + m);
+  }
+  const cw = x1 - x0;
+  const ch = y1 - y0;
+  const k = Math.min(2400 / cw, 3200 / ch, 4);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(cw * k);
+  cv.height = Math.round(ch * k);
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(img, x0, y0, cw, ch, 0, 0, cv.width, cv.height);
+  const P = (ll) => { const [x, y] = toPx(ll); return [(x - x0) * k, (y - y0) * k]; };
+  const path = (ring) => { ctx.beginPath(); ring.forEach((ll, i) => { const [x, y] = P(ll); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); };
+  for (const z of zones) {
+    const st = zoneStatus(z.id);
+    ctx.globalAlpha = 0.5; ctx.fillStyle = ZONE_COLORS[st]; path(z.ring); ctx.fill();
+    ctx.globalAlpha = 1; ctx.lineWidth = Math.max(2, cv.width / 500); ctx.strokeStyle = '#fff'; ctx.stroke();
+    if (z.grid) {
+      ctx.lineWidth = Math.max(1, cv.width / 1600); ctx.strokeStyle = 'rgba(255,255,255,.8)';
+      for (const u2 of gridUnits(z.grid)) { path(u2); ctx.stroke(); }
+    }
+  }
+  // Étiquettes : nom + « À PRENDRE » / « RÉSERVE » + produits
+  const fs = Math.max(18, cv.width / 48);
+  for (const z of zones) {
+    const st = zoneStatus(z.id);
+    const [cx, cy] = P(centreRing(z.ring));
+    const etat = { prendre: '👉 À PRENDRE', reserve: 'RÉSERVE – ne pas toucher', sechage: 'EN SÉCHAGE – ne pas toucher', vide: 'VIDE' }[st];
+    const lignes = [[z.nom, `bold ${fs}px system-ui, sans-serif`, '#000'], [etat, `bold ${fs * 0.8}px system-ui, sans-serif`, ZONE_COLORS[st]],
+      ...zoneResume(z.id).slice(0, 3).map((t) => [t.replace('👉 ', ''), `${fs * 0.72}px system-ui, sans-serif`, '#222'])];
+    const wMax = Math.max(...lignes.map(([t, f]) => { ctx.font = f; return ctx.measureText(t).width; }));
+    const lh = fs * 1.2;
+    const bw = wMax + fs;
+    const bh = lignes.length * lh + fs * 0.4;
+    ctx.globalAlpha = 0.92; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.roundRect(cx - bw / 2, cy - bh / 2, bw, bh, fs * 0.4); ctx.fill();
+    ctx.globalAlpha = 1; ctx.lineWidth = fs * 0.25; ctx.strokeStyle = ZONE_COLORS[st];
+    ctx.beginPath(); ctx.moveTo(cx - bw / 2, cy - bh / 2 + fs * 0.4); ctx.lineTo(cx - bw / 2, cy + bh / 2 - fs * 0.4); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    lignes.forEach(([t, f, c], i) => { ctx.font = f; ctx.fillStyle = c; ctx.fillText(t, cx, cy - bh / 2 + fs * 0.2 + lh * (i + 0.5)); });
+  }
+  return cv.toDataURL('image/jpeg', 0.9);
+}
+
+async function imprimerFiche() {
+  toast('Préparation de l’impression…', 3000);
+  const t = S.settings.triage;
+  const date = new Date().toLocaleDateString('fr-CH', { day: 'numeric', month: 'long', year: 'numeric' });
+  const rows = resume();
+  const plan = await imagePlan();
+  let totSt = 0;
+  for (const r of rows) totSt += steres(r.total, r.p.contenant);
+  const zones = S.settings.lieux;
+  const reserves = (k) => [...new Set(S.lots.filter((l) => pkey(l) === k && l.quantite > 0 && l.role !== 'prendre').map((l) => lieuNom(l.lieu)))];
+  const entete = (titre) => `<header><img src="img/logo-triage.jpg" alt=""><div><b>${esc(t.nom)}</b><br>${esc(titre)} · ${esc(date)}</div></header>`;
+  $('#print').innerHTML = `<div class="fiche">
+    ${plan ? `<section class="f-page">
+      ${entete('Plan des zones de bois de feu')}
+      <img class="f-plan" src="${plan}" alt="Plan">
+      <div class="f-leg"><span><i style="background:${ZONE_COLORS.prendre}"></i>👉 À prendre : c’est ici qu’on se sert</span><span><i style="background:${ZONE_COLORS.reserve}"></i>Réserve : ne pas toucher</span><span><i style="background:${ZONE_COLORS.sechage}"></i>En séchage : ne pas toucher</span><span><i style="background:${ZONE_COLORS.vide}"></i>Vide</span></div>
+    </section>` : ''}
+    <section class="f-page${plan ? ' f-break' : ''}">
+      ${entete('État du stock')}
+      <h1>Stock au ${esc(date)} <small>≈ ${fmtQ(totSt)} stères</small></h1>
+      <table><thead><tr><th>Produit</th><th class="n">Quantité</th><th class="n">≈ stères</th><th>👉 Prendre en</th><th>Réserves</th></tr></thead><tbody>
+      ${rows.filter((r) => r.total > 0).map((r) => { const c = lotCourant(r.k); return `<tr><td><b>${esc(r.p.essence)} ${esc(r.p.longueur)}</b> ${esc(r.p.contenant)}${r.autre ? `<br><small>dont ${fmtQ(r.autre)} en séchage / vert</small>` : ''}</td>
+        <td class="n">${qty(r.total, r.p.contenant)}</td><td class="n">${fmtQ(steres(r.total, r.p.contenant))}</td>
+        <td><b>${c ? esc(lieuNom(c.lieu)) : '—'}</b></td><td>${esc(reserves(r.k).join(', ') || '—')}</td></tr>`; }).join('')}
+      </tbody></table>
+      <h2>Détail par zone</h2>
+      <div class="f-zones">${zones.map((z) => {
+        const ls = zoneLots(z.id).sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr'));
+        const st = zoneStatus(z.id);
+        return `<div class="f-zone"><h3><i style="background:${ZONE_COLORS[st]}"></i>${esc(z.nom)}${z.grid ? ` <small>· ${occupation(z)} ${esc(pluriel(z.grid.contenant))}</small>` : ''}</h3>
+          ${ls.length ? `<ul>${ls.map((l) => `<li>${l.role === 'prendre' ? '👉 ' : ''}<b>${qty(l.quantite, l.contenant)}</b> ${esc(l.essence)} ${esc(l.longueur)} ${esc(l.contenant)}${l.etat !== 'sec' ? ` <small>(${esc(ETATS[l.etat])})</small>` : ''}${l.role === 'prendre' ? ' <b>– à prendre</b>' : ''}</li>`).join('')}</ul>` : '<p><small>Vide</small></p>'}
+        </div>`;
+      }).join('')}</div>
+    </section>
+  </div>`;
+  await Promise.all($$('img', $('#print')).map((im) => (im.complete ? null : new Promise((r) => { im.onload = r; im.onerror = r; }))));
+  window.print();
+}
+
 async function printBon(c) {
   const t = S.settings.triage;
   const cl = c.client || {};
@@ -1333,7 +1436,7 @@ function renderPlace() {
     ${sansContour.length && !drawing && !placing ? `<p class="hint">Pas encore placée${sansContour.length > 1 ? 's' : ''} sur la carte : ${sansContour.map((z) => `<button type="button" class="link" data-zone-edit="${esc(z.id)}">${esc(z.nom)}</button>`).join(', ')}</p>` : ''}
     <div class="row mt">
       <label class="btn small">📷 ${pl ? 'Changer la photo de la place' : 'Choisir la photo de la place'}<input type="file" accept="image/*" id="plan-file" hidden></label>
-      ${pl ? '<button type="button" class="small" id="btn-cal">📏 Régler l’échelle</button>' : ''}
+      ${pl ? '<button type="button" class="small" id="btn-cal">📏 Régler l’échelle</button><button type="button" class="small" id="btn-print-plan">🖨 Imprimer le plan et le stock</button>' : ''}
     </div>
     ${pl ? (pl.echelleOk ? `<p class="hint">Échelle : 1 m = ${fmtQ(Math.round(1 / pl.mpp))} pixels de la photo.</p>` : '') : '<p class="hint">Mettez une photo vue du dessus de vos places de stockage (par ex. une capture d’écran satellite, nettoyée). Vous zoomerez dessus et y placerez vos zones. En attendant, la carte swisstopo est affichée.</p>'}
     ${pl ? '' : `<details class="backup"><summary>Carte sans réseau</summary>
@@ -1556,6 +1659,7 @@ function bindPlace(root) {
   }));
   if ($('#btn-offline', root)) $('#btn-offline', root).onclick = saveOfflineTiles;
   $('#plan-file', root).onchange = (e) => choisirPlan(e.target.files[0]);
+  $('#btn-print-plan', root).onclick = () => imprimerFiche();
   const cal = () => { Object.assign(S, { calibrating: true, drawing: null, editing: null, placingGrid: null, adjusting: null }); render(); $('#zmap')?.scrollIntoView({ behavior: 'smooth' }); };
   $('#btn-cal', root) && ($('#btn-cal', root).onclick = cal);
   $('#btn-cal2', root) && ($('#btn-cal2', root).onclick = cal);
