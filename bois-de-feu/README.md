@@ -24,8 +24,8 @@ Dimensions au sol : caisse 1,2 × 0,8 m (palette), big-bag 1,2 × 1,2 m, ballot 
    Les lots sont rangés par zone, avec photos, état, durée de séchage et humidité.
    Les boutons **− / +** servent à corriger l'inventaire et à noter le bois sorti.
 2. **Zones** : carte swisstopo avec les zones (fond « Plan vide » = plan cadastral sur fond blanc, sans les anciens tas de la photo ; aussi photo pâle, photo aérienne, carte) de toutes les places autour du triage.
-   Une zone se décrit en **rangées de contenants** (ex. 8 caisses × 2 lignes, 2 étages) : l'application calcule ses
-   dimensions exactes (caisse 1,2 × 0,8 m, big-bag 1,2 × 1,2 m, ballot 1,2 × 0,8 m (bois cerclé, comme une caisse)), sa capacité et son taux d'occupation.
+   Une zone se décrit en **rangées de contenants** (ex. 8 caisses × 2 lignes) : l'application calcule ses
+   surface au sol (caisse 1,2 × 0,8 m, big-bag 1,2 × 1,2 m, ballot 1,2 × 0,8 m) ; la grille sert seulement à mesurer la surface, aucune capacité n'est affichée.
    On la pose d'**un toucher** sur la carte (elle reprend l'alignement de la zone voisine), puis on la **glisse avec le doigt** :
    près d'une autre zone, l'**aimant** la colle à côté avec l'espace habituel (0,5 m, réglable dans le catalogue).
    Deux boutons servent à la tourner (1° ou 5°).

@@ -1137,10 +1137,6 @@ async function imagePlan() {
     const st = zoneStatus(z.id);
     ctx.globalAlpha = 0.5; ctx.fillStyle = ZONE_COLORS[st]; path(z.ring); ctx.fill();
     ctx.globalAlpha = 1; ctx.lineWidth = Math.max(2, cv.width / 500); ctx.strokeStyle = '#fff'; ctx.stroke();
-    if (z.grid) {
-      ctx.lineWidth = Math.max(1, cv.width / 1600); ctx.strokeStyle = 'rgba(255,255,255,.8)';
-      for (const u2 of gridUnits(z.grid)) { path(u2); ctx.stroke(); }
-    }
   }
   // Étiquettes : nom + « À PRENDRE » / « RÉSERVE » + produits
   const fs = Math.max(18, cv.width / 48);
@@ -1193,7 +1189,7 @@ async function imprimerFiche() {
       <div class="f-zones">${zones.map((z) => {
         const ls = zoneLots(z.id).sort((a, b) => plabel(a).localeCompare(plabel(b), 'fr'));
         const st = zoneStatus(z.id);
-        return `<div class="f-zone"><h3><i style="background:${ZONE_COLORS[st]}"></i>${esc(z.nom)}${z.grid ? ` <small>· ${occupation(z)} ${esc(pluriel(z.grid.contenant))}</small>` : ''}</h3>
+        return `<div class="f-zone"><h3><i style="background:${ZONE_COLORS[st]}"></i>${esc(z.nom)}${z.grid ? ` <small>· ${esc(gridText(z.grid).split(' (')[0])}</small>` : ''}</h3>
           ${ls.length ? `<ul>${ls.map((l) => `<li>${l.role === 'prendre' ? '👉 ' : ''}<b>${qty(l.quantite, l.contenant)}</b> ${esc(l.essence)} ${esc(l.longueur)} ${esc(l.contenant)}${l.etat !== 'sec' ? ` <small>(${esc(ETATS[l.etat])})</small>` : ''}${l.role === 'prendre' ? ' <b>– à prendre</b>' : ''}</li>`).join('')}</ul>` : '<p><small>Vide</small></p>'}
         </div>`;
       }).join('')}</div>
@@ -1336,8 +1332,7 @@ const capacite = (g) => g.cols * g.rows * (g.etages || 1);
 
 function gridText(g) {
   const { L, D } = gridSize(g);
-  const cap = capacite(g);
-  return `${g.cols} × ${g.rows} ${pluriel(g.contenant)}${g.etages > 1 ? ` × ${g.etages} étages` : ''} · ${fmtM(L)} × ${fmtM(D)} · capacité ${cap} ${pluriel(g.contenant)}${fmtSt(cap, g.contenant)}`;
+  return `${fmtM(L)} × ${fmtM(D)} · ≈ ${fmtQ(Math.round(L * D))} m² (mesuré en ${g.cols} × ${g.rows} ${pluriel(g.contenant)})`;
 }
 
 function occupation(z) {
@@ -1487,7 +1482,7 @@ function renderPlace() {
       <div class="row between"><h2><i class="dot ${zoneStatus(z.id)}"></i> ${esc(z.nom)}</h2>
         <span class="row">${z.ring ? `<button type="button" class="small" data-show="${esc(z.id)}">🗺 Voir</button>` : ''}
         <button type="button" class="small" data-zone-edit="${esc(z.id)}">Modifier</button></span></div>
-      ${z.grid ? `<p class="tiny">${esc(gridText(z.grid))}<br><b>Occupé : ${occupation(z)} ${esc(pluriel(z.grid.contenant))}</b></p>` : ''}
+      ${z.grid ? `<p class="tiny">Surface : ${esc(gridText(z.grid))}</p>` : ''}
       ${z.note || (m2 && !z.grid) ? `<p class="hint">${esc(z.note || '')}${z.note && m2 && !z.grid ? ' · ' : ''}${m2 && !z.grid ? `≈ ${Math.round(m2)} m²` : ''}</p>` : ''}
       <div class="lots">${ls.map(lotCard).join('') || '<p class="hint">Zone vide.</p>'}</div>
       <button type="button" class="small mt" data-zone-add="${esc(z.id)}">+ Lot dans cette zone</button>
@@ -1503,13 +1498,8 @@ function drawZone(z, group, root) {
   if (!z.ring) return;
   const st = zoneStatus(z.id);
   const actif = S.adjusting === z.id;
-  const poly = L.polygon(z.ring, { color: actif ? '#ffeb3b' : '#fff', weight: actif ? 3 : 2, fillColor: ZONE_COLORS[st], fillOpacity: z.grid ? 0.25 : 0.55 }).addTo(group);
-  if (z.grid) {
-    unitLayers[z.id] = L.featureGroup(gridUnits(z.grid).map((r) => L.polygon(r, { color: '#fff', weight: 1, opacity: 0.9, fillColor: ZONE_COLORS[st], fillOpacity: 0.45, interactive: false }))).addTo(group);
-    poly.bringToFront();
-  }
-  const occ = z.grid ? `<span class="zl-d"><br>${occupation(z)} ${esc(pluriel(z.grid.contenant))}</span>` : '';
-  poly.bindTooltip(`<b>${esc(z.nom)}</b>${occ}<span class="zl-d">${zoneResume(z.id).slice(0, 3).map((t) => `<br>${esc(t)}`).join('')}</span>`, { permanent: true, direction: 'center', className: `zlabel ${st}` });
+  const poly = L.polygon(z.ring, { color: actif ? '#ffeb3b' : '#fff', weight: actif ? 3 : 2, fillColor: ZONE_COLORS[st], fillOpacity: 0.5 }).addTo(group);
+  poly.bindTooltip(`<b>${esc(z.nom)}</b><span class="zl-d">${zoneResume(z.id).slice(0, 3).map((t) => `<br>${esc(t)}`).join('')}</span>`, { permanent: true, direction: 'center', className: `zlabel ${st}` });
   poly.on('click', () => {
     if (S.drawing || S.editing || S.placingGrid || S.adjusting) return;
     const card = $(`#zone-${CSS.escape(z.id)}`, root);
@@ -1894,7 +1884,6 @@ function zoneDialog(zone) {
           <option value="large"${g.sens === 'large' ? ' selected' : ''}>Côté court dans la ligne</option></select></label>
         <label>Nombre dans une ligne<input name="cols" inputmode="numeric" value="${g.cols}" placeholder="ex. 8"></label>
         <label>Nombre de lignes<input name="rows" inputmode="numeric" value="${g.rows}" placeholder="ex. 2"></label>
-        <label>Étages (empilés)<input name="etages" inputmode="numeric" value="${g.etages || 1}"></label>
         <label>Espace entre contenants (m)<input name="gap" inputmode="decimal" value="${String(g.gap || 0).replace('.', ',')}"></label>
       </div>
       <p class="box tiny" id="g-info"></p>
@@ -1914,12 +1903,12 @@ function zoneDialog(zone) {
     ...(z.grid || {}),
     contenant: form.contenant.value, sens: form.sens.value,
     cols: Math.max(1, Math.round(num(form.cols.value))), rows: Math.max(1, Math.round(num(form.rows.value))),
-    etages: Math.max(1, Math.round(num(form.etages.value) || 1)), gap: Math.max(0, num(form.gap.value)),
+    etages: 1, gap: Math.max(0, num(form.gap.value)),
   });
   const refresh = () => {
     const libre = form.forme.value === 'libre';
     $('#f-grille', form).hidden = libre;
-    $('#g-info', form).textContent = num(form.cols.value) && num(form.rows.value) ? gridText(readGrid()) : 'Indiquez le nombre de contenants dans une ligne et le nombre de lignes.';
+    $('#g-info', form).textContent = num(form.cols.value) && num(form.rows.value) ? gridText(readGrid()) : 'Mesurez la surface au sol : nombre de contenants dans une ligne et nombre de lignes quand la zone est pleine.';
   };
   form.addEventListener('input', refresh);
   form.addEventListener('change', refresh);
