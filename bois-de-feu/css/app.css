@@ -244,7 +244,11 @@ ul.hist { list-style: none; padding: 0; margin: 0; }
   .fiche header { display: flex; gap: 12px; align-items: center; border-bottom: 2px solid #6b3f1d; padding-bottom: 6px; margin-bottom: 8px; }
   .fiche header img { height: 44px; }
   .f-break { break-before: page; }
-  .f-plan { display: block; max-width: 100%; max-height: 235mm; margin: 0 auto; }
+  .f-plan { display: block; max-width: 100%; max-height: 170mm; margin: 0 auto; }
+  .f-legende { margin-top: 6px; font-size: 9.5pt; }
+  .f-legende td, .f-legende th { padding: 2px 5px; }
+  .fiche .f-num { text-align: center; width: 9mm; }
+  .f-num span { display: inline-block; text-align: center; min-width: 6mm; height: 6mm; line-height: 6mm; border-radius: 3mm; color: #fff; font-weight: 700; }
   .f-leg { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 10pt; }
   .fiche i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
   .fiche h1 { font-size: 16pt; margin: 6px 0 10px; }
