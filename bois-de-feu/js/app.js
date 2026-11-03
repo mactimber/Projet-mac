@@ -1186,7 +1186,7 @@ function dessinerPlan(ph, c, o, maxW, maxH, extra = {}) {
   }
   // Noms écrits dans le sens de la zone, à la taille qui tient dedans
   if (o.etiquettes !== 'rien') {
-    const fsMin = 2.3 * pxmm; // au moins 2,3 mm de haut sur le papier
+    const fsMin = 1.9 * pxmm; // au moins 1,9 mm de haut sur le papier
     for (const z of zones) {
       const st = zoneStatus(z.id);
       const [cx, cy] = P(centreRing(z.ring));
@@ -1251,7 +1251,7 @@ function imprimerFiche() {
   const rad = (n, v, t) => `<label class="check big-check"><input type="radio" name="${n}" value="${v}" ${o[n] === v ? 'checked' : ''}> ${t}</label>`;
   const form = openDlg('Imprimer', `
     <h3>Que voulez-vous imprimer ?</h3>
-    ${pl ? ck('general', 'Le plan général (toute la place, secteurs numérotés)') + ck('secteurs', 'Un plan zoomé par secteur (noms des zones lisibles)') : '<p class="hint">Pas de photo de la place : seul le stock peut être imprimé.</p>'}
+    ${pl ? ck('general', 'Le plan des zones (noms écrits sur les zones)') : '<p class="hint">Pas de photo de la place : seul le stock peut être imprimé.</p>'}
     ${ck('stock', 'Le tableau du stock (par produit)')}
     ${ck('detail', 'Le détail zone par zone')}
     ${pl ? `<h3>Plan</h3>
@@ -1267,10 +1267,10 @@ function imprimerFiche() {
   '<button type="button" data-close>Annuler</button><span class="spacer"></span><button class="primary">🖨 Imprimer</button>');
   onSubmit(form, async (f) => {
     const opts = {
-      general: pl && !!f.general, secteurs: pl && !!f.secteurs, stock: !!f.stock, detail: !!f.detail,
+      general: pl && !!f.general, secteurs: false, stock: !!f.stock, detail: !!f.detail,
       format: f.format || 'A3', orientation: f.orientation || 'auto', fond: f.fond || o.fond, carres: !!f.carres, etiquettes: f.etiquettes || 'noms',
     };
-    if (!opts.general && !opts.secteurs && !opts.stock && !opts.detail) { toast('Cochez au moins un élément'); return; }
+    if (!opts.general && !opts.stock && !opts.detail) { toast('Cochez au moins un élément'); return; }
     try { localStorage.setItem('bf-print', JSON.stringify(opts)); } catch { /* */ }
     dlg().close();
     await lancerImpression(opts);
@@ -1294,25 +1294,14 @@ async function lancerImpression(o) {
     return `<section class="f-page" style="page:${paysage ? 'pl' : 'pp'}">${entete(titre)}
       <img class="f-plan" src="${plan.url}" alt="" style="width:${w.toFixed(1)}mm;height:${h.toFixed(1)}mm">${legende}</section>`;
   };
-  const ph = (o.general || o.secteurs) ? await chargerPhotoPlan() : null;
+  const ph = o.general ? await chargerPhotoPlan() : null;
   if (ph) {
-    const secs = secteurs(ph);
-    if (o.general) {
-      const b = secs.length ? cadre(ph, { x0: Math.min(...secs.map((s2) => s2.b.x0)), y0: Math.min(...secs.map((s2) => s2.b.y0)), x1: Math.max(...secs.map((s2) => s2.b.x1)), y1: Math.max(...secs.map((s2) => s2.b.y1)) }, 8, 30) : { x0: 0, y0: 0, x1: ph.W, y1: ph.H };
-      const pay = choisirSens(b.x1 - b.x0, b.y1 - b.y0);
-      const [pw, ph2] = dimsPage(pay);
-      const plan = dessinerPlan(ph, b, o, pw - 2 * marge, ph2 - 2 * marge - 26, { secteurs: secs.length > 1 ? secs : [], cacherPetits: true });
-      pages.push(pagePlan(secs.length > 1 ? 'Plan général – les numéros renvoient aux pages des secteurs' : 'Plan des zones', plan, pay));
-    }
-    if (o.secteurs && (secs.length > 1 || !o.general)) {
-      secs.forEach((sc, i) => {
-        const b = cadre(ph, sc.b, 2, 12);
-        const pay = choisirSens(b.x1 - b.x0, b.y1 - b.y0);
-        const [pw, ph2] = dimsPage(pay);
-        const plan = dessinerPlan(ph, b, o, pw - 2 * marge, ph2 - 2 * marge - 26);
-        pages.push(pagePlan(`Secteur ${i + 1} · ${sc.zones.length} zone${sc.zones.length > 1 ? 's' : ''}`, plan, pay));
-      });
-    }
+    const zs = S.settings.lieux.filter((z) => z.ring);
+    const b = zs.length ? cadre(ph, bboxPx(zs.flatMap((z) => z.ring.map(ph.toPx))), 4, 20) : { x0: 0, y0: 0, x1: ph.W, y1: ph.H };
+    const pay = choisirSens(b.x1 - b.x0, b.y1 - b.y0);
+    const [pw, ph2] = dimsPage(pay);
+    const plan = dessinerPlan(ph, b, o, pw - 2 * marge, ph2 - 2 * marge - 26);
+    pages.push(pagePlan('Plan des zones de bois de feu', plan, pay));
   }
   if (o.stock || o.detail) {
     const rows = resume();
