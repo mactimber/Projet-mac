@@ -1174,13 +1174,15 @@ async function imprimerFiche() {
       ${entete('Plan des zones de bois de feu')}
       <img class="f-plan" src="${plan}" alt="Plan">
       <div class="f-leg"><span><i style="background:${ZONE_COLORS.prendre}"></i>👉 À prendre : c’est ici qu’on se sert</span><span><i style="background:${ZONE_COLORS.reserve}"></i>Réserve : ne pas toucher</span><span><i style="background:${ZONE_COLORS.sechage}"></i>En séchage : ne pas toucher</span><span><i style="background:${ZONE_COLORS.vide}"></i>Vide</span></div>
-      <table class="f-legende"><thead><tr><th>N°</th><th>Zone</th><th>État</th><th>Contenu</th></tr></thead><tbody>
+      <table class="f-legende"><thead><tr><th>N°</th><th>Zone</th><th>État</th><th class="n">Quantité</th></tr></thead><tbody>
       ${zones.filter((z) => z.ring).map((z, i) => {
         const st = zoneStatus(z.id);
         const etat = { prendre: '👉 À prendre', reserve: 'Réserve – ne pas toucher', sechage: 'En séchage – ne pas toucher', vide: 'Vide' }[st];
         const ls = zoneLots(z.id).sort((a, b) => (a.role === 'prendre' ? -1 : 0) - (b.role === 'prendre' ? -1 : 0));
         return `<tr><td class="f-num"><span style="background:${ZONE_COLORS[st]}">${i + 1}</span></td><td><b>${esc(z.nom)}</b></td><td>${esc(etat)}</td>
-          <td>${ls.map((l) => `${l.role === 'prendre' ? '👉 ' : ''}${qty(l.quantite, l.contenant)} ${esc(l.essence)} ${esc(l.longueur)}`).join('<br>') || '—'}</td></tr>`;
+          <td class="n">${ls.length > 1
+            ? ls.map((l) => `${fmtQ(l.quantite)} ${esc(pluriel(l.contenant))} <small>${esc(l.essence)} ${esc(l.longueur)}</small>`).join('<br>')
+            : ls.length ? `${fmtQ(ls[0].quantite)} ${esc(ls[0].quantite > 1 ? pluriel(ls[0].contenant) : ls[0].contenant.toLowerCase())}` : '—'}</td></tr>`;
       }).join('')}</tbody></table>
     </section>` : ''}
     <section class="f-page${plan ? ' f-break' : ''}">
