@@ -1311,6 +1311,7 @@ function renderPlace() {
   const sansContour = zones.filter((z) => !z.ring);
   const pas = S.pas || 0.1;
   return `
+  ${pl ? `
   <section class="card map-card">
     <div class="row between"><h2>Secteur du bois de feu</h2>
       <span class="row">${pl ? '' : '<button type="button" class="small" id="btn-gps">◎ Ma position</button>'}<button type="button" class="small" id="btn-fit">⤢ Tout voir</button></span></div>
@@ -1341,6 +1342,13 @@ function renderPlace() {
       <progress id="offline-progress" hidden></progress><p class="hint" id="offline-status"></p>
     </details>`}
   </section>
+` : `
+  <section class="card plan-vide">
+    <h2>Photo de la place</h2>
+    <p>Vos zones se posent sur <b>votre photo</b> des places de stockage, vue du dessus (par ex. une capture satellite, nettoyée si besoin).</p>
+    <label class="btn primary big">📷 Choisir la photo de la place<input type="file" accept="image/*" id="plan-file" hidden></label>
+    <p class="hint">Ensuite : réglez l’échelle une fois (une longueur connue), puis posez vos zones d’un toucher sur la photo.</p>
+  </section>`}
 
   <button class="primary big" id="btn-new-zone">+ Nouvelle zone</button>
 
@@ -1388,6 +1396,15 @@ function bindPlace(root) {
   const zones = S.settings.lieux;
   unitLayers = {};
   const pl = S.settings.plan;
+  if (!pl) {
+    // Pas encore de photo : seulement la liste des zones.
+    $('#plan-file', root).onchange = (e) => choisirPlan(e.target.files[0]);
+    $('#btn-new-zone', root).onclick = () => zoneDialog();
+    $$('[data-zone-edit]', root).forEach((b) => b.addEventListener('click', () => zoneDialog(zones.find((z) => z.id === b.dataset.zoneEdit))));
+    $$('[data-zone-add]', root).forEach((b) => b.addEventListener('click', () => lotDialog(null, { lieu: b.dataset.zoneAdd })));
+    bindLots(root);
+    return;
+  }
   map = L.map($('#zmap', root), { maxZoom: pl ? 25 : 22, minZoom: 8, zoomControl: true, zoomSnap: 0.25 });
   window.bfMap = map; // accès pour le diagnostic
   map.attributionControl.setPrefix(false);
@@ -1773,7 +1790,8 @@ function zoneDialog(zone) {
     } else {
       z.grid = ng;
       await saveSettings();
-      startMode('placingGrid', z.id);
+      if (S.settings.plan) startMode('placingGrid', z.id);
+      else { toast('Zone enregistrée. Ajoutez la photo de la place pour la poser dessus.', 5000); render(); }
     }
   });
   if (isNew) return;
@@ -2136,7 +2154,7 @@ async function restore(file) {
 
 const VIEWS = {
   stock: { title: 'Stock', render: renderStock, bind: bindStock },
-  place: { title: 'Zones sur la carte', render: renderPlace, bind: bindPlace },
+  place: { title: 'Zones', render: renderPlace, bind: bindPlace },
   entrees: { title: 'Entrées de bois', render: renderEntrees, bind: bindEntrees },
   livraisons: { title: 'Commandes & livraisons', render: renderLivraisons, bind: bindLivraisons },
   plus: { title: 'Historique & réglages', render: renderPlus, bind: bindPlus },
