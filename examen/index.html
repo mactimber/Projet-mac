@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Dossier de coupe E17</title>
+  <meta name="description" content="Dossier de coupe E17 : plan de coupe, fiche de secours et dossier Word à compléter.">
+  <meta name="theme-color" content="#7b3f00">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/logo-vallon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/logo-vallon-180.png">
+  <meta name="apple-mobile-web-app-title" content="Dossier E17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="vendor/geoman/leaflet-geoman.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button class="icon-btn" id="btn-chantiers" aria-label="Mes chantiers">☰</button>
+      <div class="title" id="chantier-name">Chantier</div>
+      <form class="search" id="search-form" autocomplete="off">
+        <input type="search" id="search-input" placeholder="Rechercher un lieu…" aria-label="Rechercher un lieu">
+        <ul class="search-results" id="search-results" hidden></ul>
+      </form>
+      <button class="icon-btn" id="btn-layers" aria-label="Fond de carte">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+      </button>
+    </header>
+
+    <div id="map"></div>
+
+    <button class="fab" id="btn-locate" aria-label="Ma position">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg>
+    </button>
+
+    <div class="hint-bar" id="hint-bar" hidden>
+      <span id="hint-text"></span>
+      <button id="hint-cancel">Terminer</button>
+    </div>
+
+    <!-- Feuille du bas : contenu de l'étape active -->
+    <section class="sheet" id="sheet" hidden>
+      <div class="sheet-body" id="sheet-body"></div>
+    </section>
+
+    <nav class="steps" aria-label="Étapes">
+      <button data-step="parcelle"><b>1</b><span>Parcelle</span></button>
+      <button data-step="symboles"><b>2</b><span>Symboles</span></button>
+      <button data-step="fiche"><b>3</b><span>Fiche + dossier</span></button>
+    </nav>
+  </div>
+
+  <!-- Fiche de secours (plein écran, imprimable) -->
+  <div id="fiche" hidden></div>
+
+  <dialog id="dlg-chantiers" class="dialog">
+    <form method="dialog">
+      <header class="brand-head"><img src="img/logo-triage.jpg" alt="Triage forestier du Vallon" class="brand-logo"><div><div class="brand-title">Dossier de coupe · E17</div><h2>Mes chantiers</h2></div></header>
+      <div class="dialog-body"><ul id="chantier-list" class="chantier-list"></ul></div>
+      <footer>
+        <button type="button" id="btn-new-chantier" class="primary big">+ Nouveau chantier</button>
+        <p class="hint">Vos chantiers s'enregistrent tout seuls sur ce téléphone.<br>
+          Dossier de coupe en Word : <b>3. Fiche + dossier → 📄 Dossier Word</b>.</p>
+        <details class="backup">
+          <summary>Copie de secours (changer de téléphone)</summary>
+          <p class="hint">Crée un fichier de données à garder (Drive, e-mail…) pour récupérer vos chantiers sur un autre appareil avec « Récupérer ». Ce fichier ne s'ouvre pas pour être lu : c'est normal.</p>
+          <div class="row">
+            <button type="button" id="btn-backup">Créer la copie</button>
+            <label class="btn">Récupérer une copie<input type="file" id="input-import" accept=".json,application/json" hidden></label>
+          </div>
+        </details>
+        <div class="row">
+          <span class="spacer"></span>
+          <button value="close">Fermer</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-layers" class="dialog">
+    <form method="dialog">
+      <header><h2>Carte</h2></header>
+      <div class="dialog-body">
+        <div class="base-choice" id="base-choice"></div>
+        <div class="overlay-choice" id="overlay-choice"></div>
+        <h3>Sans réseau en forêt ?</h3>
+        <p class="hint">Avant de partir, centrez la carte sur le chantier puis :</p>
+        <button type="button" id="btn-offline" class="big">⬇ Enregistrer cette zone</button>
+        <progress id="offline-progress" hidden></progress>
+        <p id="offline-status" class="hint"></p>
+      </div>
+      <footer><div class="row"><span class="spacer"></span><button value="close" class="primary">OK</button></div></footer>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/geoman/leaflet-geoman.min.js"></script>
+  <script src="vendor/qrcode/qrcode.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

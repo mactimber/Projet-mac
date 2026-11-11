@@ -1,0 +1,33 @@
+{
+  "name": "Dossier de coupe E17",
+  "short_name": "Dossier E17",
+  "description": "Dossier de coupe pour le module E17 (brevet de contremaître) : plan de coupe, secours et dossier Word à compléter.",
+  "lang": "fr-CH",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#7b3f00",
+  "icons": [
+    {
+      "src": "icons/logo-vallon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/logo-vallon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/logo-vallon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
