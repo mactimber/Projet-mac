@@ -277,6 +277,8 @@ export function renderFiche(root, chantier, opt) {
         <svg class="f-tarrow" id="f-tarrow" aria-hidden="true"></svg>
         <div class="f-inset" id="f-inset" hidden>
           <div id="fiche-inset-map"></div>
+          <button type="button" class="f-inset-reset no-print" id="f-inset-reset" title="Remettre à sa place" aria-label="Remettre le cartouche à sa place">↺</button>
+          <div class="f-inset-handle no-print" id="f-inset-handle" title="Agrandir / réduire" aria-label="Agrandir ou réduire le cartouche"></div>
           <div class="f-inset-cap" id="f-inset-cap"></div>
         </div>
         <button type="button" class="f-recadrer no-print" id="f-recadrer" ${chantier.ficheView ? '' : 'hidden'}>↺ Cadrage automatique</button>
@@ -417,6 +419,7 @@ export function renderFiche(root, chantier, opt) {
   fitFicheMap(chantier);
   ficheMap.on('zoomend', updateRatio);
   ficheMap.on('moveend zoomend resize', () => updateTInset(chantier));
+  setupInsetDrag(root, chantier, opt);
   ficheMap.on('moveend', () => {
     if (recadrageAuto || root.classList.contains('print-layout')) return;
     const b = ficheMap.getBounds();
@@ -522,6 +525,70 @@ function rayBox(p, d, r) {
 const fmtDist = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(m / 10) * 10} m`);
 const DIRS = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest'];
 
+/** Place et taille choisies à la main : fractions de la zone du plan (valables aussi à l'impression). */
+function placeInset(wrap, box, pos) {
+  wrap.classList.toggle('inset-free', !!pos);
+  if (!pos) {
+    box.style.cssText = '';
+    return;
+  }
+  const W = wrap.clientWidth;
+  const H = wrap.clientHeight;
+  const w = Math.min(Math.max(pos.w * W, 110), W - 8);
+  box.style.cssText = `width:${w}px;min-width:0;max-width:none;right:auto;bottom:auto;left:0;top:0;`;
+  const h = box.offsetHeight;
+  const x = Math.min(Math.max(pos.x * W, 0), W - w);
+  const y = Math.min(Math.max(pos.y * H, 0), Math.max(H - h, 0));
+  box.style.left = `${x}px`;
+  box.style.top = `${y}px`;
+}
+
+/** Glisser le cartouche pour le déplacer ; poignée du coin pour changer sa taille. */
+function setupInsetDrag(root, chantier, opt) {
+  const box = root.querySelector('#f-inset');
+  const wrap = box.closest('.f-mapwrap');
+  const handle = root.querySelector('#f-inset-handle');
+  let geste = null;
+  const debut = (e, mode) => {
+    if (e.button > 0 || e.target.closest('#f-inset-reset')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    geste = { mode, id: e.pointerId, x0: e.clientX, y0: e.clientY, l: box.offsetLeft, t: box.offsetTop, w: box.offsetWidth };
+    box.setPointerCapture(e.pointerId);
+    box.classList.add('dragging');
+  };
+  box.addEventListener('pointerdown', (e) => debut(e, 'move'));
+  handle.addEventListener('pointerdown', (e) => debut(e, 'size'));
+  box.addEventListener('pointermove', (e) => {
+    if (!geste || e.pointerId !== geste.id) return;
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    const dx = e.clientX - geste.x0;
+    const dy = e.clientY - geste.y0;
+    if (geste.mode === 'move') {
+      chantier.tInset = { x: (geste.l + dx) / W, y: (geste.t + dy) / H, w: geste.w / W };
+    } else {
+      const w = Math.min(Math.max(geste.w + Math.max(dx, dy * 1.2), 110), W - geste.l);
+      chantier.tInset = { x: geste.l / W, y: geste.t / H, w: w / W };
+    }
+    updateTInset(chantier);
+  });
+  const fin = (e) => {
+    if (!geste || e.pointerId !== geste.id) return;
+    geste = null;
+    box.classList.remove('dragging');
+    opt.onChange();
+  };
+  box.addEventListener('pointerup', fin);
+  box.addEventListener('pointercancel', fin);
+  root.querySelector('#f-inset-reset').addEventListener('click', (e) => {
+    e.stopPropagation();
+    delete chantier.tInset;
+    updateTInset(chantier);
+    opt.onChange();
+  });
+}
+
 /** Affiche le cartouche et la flèche quand le point T est en dehors du plan affiché. */
 function updateTInset(chantier) {
   const wrap = ficheMap?.getContainer().closest('.f-mapwrap');
@@ -555,11 +622,12 @@ function updateTInset(chantier) {
   const t = px([T.lat, T.lng]);
   const d = [t[0] - c[0], t[1] - c[1]];
 
-  // Coin du cartouche : du côté du point T
+  // Coin du cartouche : du côté du point T (ou la place choisie à la main)
   const coin = `${d[1] < 0 ? 't' : 'b'}${d[0] < 0 ? 'l' : 'r'}`;
   wrap.classList.remove('inset-tl', 'inset-tr', 'inset-bl', 'inset-br');
   wrap.classList.add(`inset-${coin}`);
   box.hidden = false;
+  placeInset(wrap, box, chantier.tInset);
 
   const dist = depart.distanceTo([T.lat, T.lng]);
   const cap = bearing(depart, [T.lat, T.lng]);

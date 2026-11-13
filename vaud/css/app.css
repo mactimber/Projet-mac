@@ -428,3 +428,17 @@ body.viewer #map { bottom: 0; }
 .inset-tr .f-north { right: auto; left: 8px; }
 .f-recadrer { left: 50%; transform: translateX(-50%); }
 .print-layout .f-inset { width: 72mm; max-width: none; }
+
+.f-inset { touch-action: none; cursor: move; user-select: none; -webkit-user-select: none; }
+.f-inset.dragging { box-shadow: 0 4px 14px rgba(0,0,0,.45); opacity: .92; }
+.f-inset-handle {
+  position: absolute; right: 0; bottom: 0; width: 26px; height: 26px; z-index: 700; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, #1a8fd0 50%);
+}
+.f-inset-reset {
+  position: absolute; top: 3px; left: 3px; z-index: 700; min-height: 0; width: 26px; height: 26px; padding: 0;
+  border-radius: 50%; border: 1.5px solid #1a8fd0; background: #fff; color: #0d5f8f; font-size: 15px; line-height: 1; display: none;
+}
+.inset-free .f-inset-reset { display: block; }
+.print-layout .f-inset-handle, .print-layout .f-inset-reset { display: none !important; }
+.print-layout.inset-free .f-inset, .print-layout .inset-free .f-inset { max-width: none; }
