@@ -456,7 +456,7 @@ function fitFicheMap(chantier, { auto = false } = {}) {
   const loin = tLoin(chantier);
   const pts = [...(chantier.parcel || [])];
   for (const s of chantier.symbols) {
-    if (loin && s === loin.T) continue; // point T éloigné : montré dans un cartouche
+    if (loin && (s === loin.T || s.kind === 'acces_t')) continue; // point T éloigné : montré dans un cartouche
     if (s.lat != null) pts.push([s.lat, s.lng]);
     if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
     if (s.pts) pts.push(...s.pts);
@@ -479,7 +479,7 @@ let ficheOpt = null;
 function chantierSansT(chantier, T) {
   const pts = [...(chantier.parcel || [])];
   for (const s of chantier.symbols) {
-    if (s === T) continue;
+    if (s === T || s.kind === 'acces_t') continue; // le chemin d'accès va jusqu'au point T
     if (s.lat != null) pts.push([s.lat, s.lng]);
     if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
     if (s.pts) pts.push(...s.pts);
@@ -675,11 +675,16 @@ function updateTInset(chantier) {
   box.classList.toggle('side', !!chantier.tInsetSide);
   placeInset(wrap, box, chantier.tInset);
 
-  const dist = depart.distanceTo([T.lat, T.lng]);
+  const acces = chantier.symbols.find((s) => s.kind === 'acces_t' && s.pts?.length > 1);
+  let dist = depart.distanceTo([T.lat, T.lng]);
+  if (acces) {
+    dist = 0;
+    for (let i = 1; i < acces.pts.length; i++) dist += L.latLng(acces.pts[i - 1]).distanceTo(acces.pts[i]);
+  }
   const cap = bearing(depart, [T.lat, T.lng]);
   const dir = DIRS[Math.round(cap / 45) % 8];
   const lieu = chantier.info.localite_t || T.place || '';
-  wrap.querySelector('#f-inset-cap').innerHTML = `<strong>Point T à ${fmtDist(dist)} au ${dir}</strong><br>${lieu ? `${esc(lieu.split(' – ')[0])}<br>` : ''}<span>${formatLV95(T.lat, T.lng).replace(', ', ' / ')}</span>`;
+  wrap.querySelector('#f-inset-cap').innerHTML = `<strong>Point T à ${fmtDist(dist)} ${acces ? 'par la route' : `au ${dir}`}</strong><br>${lieu ? `${esc(lieu.split(' – ')[0])}<br>` : ''}<span>${formatLV95(T.lat, T.lng).replace(', ', ' / ')}</span>`;
 
   // Petite carte zoomée sur le point T
   const im = wrap.querySelector('#fiche-inset-map');
@@ -691,6 +696,8 @@ function updateTInset(chantier) {
     ficheOpt.makeBaseLayer().addTo(insetMap);
     if (chantier.parcel) L.polygon(chantier.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(insetMap);
   }
+  if (insetMap._acces) insetMap._acces.remove();
+  insetMap._acces = acces ? symbolLayer(acces, { interactive: false })?.addTo(insetMap) : null;
   insetMap.eachLayer((l) => { if (l.options?.tMarker) l.remove(); });
   L.marker([T.lat, T.lng], {
     icon: L.divIcon({ className: 'sym', html: symbolSvg('point_t', 26), iconSize: [26, 26], iconAnchor: [13, 13] }),
@@ -698,6 +705,13 @@ function updateTInset(chantier) {
   }).addTo(insetMap);
   insetMap.invalidateSize({ animate: false, pan: false });
   insetMap.setView([T.lat, T.lng], 16, { animate: false });
+
+  // Chemin d'accès dessiné à la main : il remplace la flèche automatique
+  if (acces) {
+    svg.innerHTML = '';
+    svg._ab = null;
+    return;
+  }
 
   // Flèche : du bord du chantier vers le cartouche
   const len = Math.hypot(d[0], d[1]) || 1;

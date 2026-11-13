@@ -8,7 +8,7 @@ import { wgs84ToLV95, lv95ToWgs84 } from './swiss.js';
 import { SYMBOL_BY_KIND } from './symbols.js';
 
 const KINDS = ['heli', 'point_t', 'vehicule', 'helico', 'abattage', 'debut_vert', 'debut_jaune', 'nacelle', 'camion_grue',
-  'pile', 'depot', 'zone', 'layon', 'electrique', 'circulation', 'distance', 'triopan', 'trois_lattes', 'barriere', 'bache', 'texte'];
+  'pile', 'depot', 'zone', 'layon', 'electrique', 'circulation', 'distance', 'triopan', 'trois_lattes', 'barriere', 'bache', 'texte', 'acces_t'];
 
 const b64url = {
   enc: (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
