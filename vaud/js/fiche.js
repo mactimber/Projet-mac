@@ -278,6 +278,7 @@ export function renderFiche(root, chantier, opt) {
         <div class="f-inset" id="f-inset" hidden>
           <div id="fiche-inset-map"></div>
           <button type="button" class="f-inset-reset no-print" id="f-inset-reset" title="Remettre à sa place" aria-label="Remettre le cartouche à sa place">↺</button>
+          <button type="button" class="f-inset-side no-print" id="f-inset-side" title="Texte à côté / en dessous" aria-label="Mettre le texte à côté ou en dessous">⇆</button>
           <div class="f-inset-handle no-print" id="f-inset-handle" title="Agrandir / réduire" aria-label="Agrandir ou réduire le cartouche"></div>
           <div class="f-inset-cap" id="f-inset-cap"></div>
         </div>
@@ -550,7 +551,7 @@ function setupInsetDrag(root, chantier, opt) {
   const handle = root.querySelector('#f-inset-handle');
   let geste = null;
   const debut = (e, mode) => {
-    if (e.button > 0 || e.target.closest('#f-inset-reset')) return;
+    if (e.button > 0 || e.target.closest('button')) return;
     e.preventDefault();
     e.stopPropagation();
     geste = { mode, id: e.pointerId, x0: e.clientX, y0: e.clientY, l: box.offsetLeft, t: box.offsetTop, w: box.offsetWidth };
@@ -581,6 +582,50 @@ function setupInsetDrag(root, chantier, opt) {
   };
   box.addEventListener('pointerup', fin);
   box.addEventListener('pointercancel', fin);
+  root.querySelector('#f-inset-side').addEventListener('click', (e) => {
+    e.stopPropagation();
+    chantier.tInsetSide = !chantier.tInsetSide;
+    updateTInset(chantier);
+    opt.onChange();
+  });
+
+  // Flèche : glisser le trait pour la déplacer, glisser un bout pour l'allonger / la tourner
+  const svg = root.querySelector('#f-tarrow');
+  let fg = null;
+  svg.addEventListener('pointerdown', (e) => {
+    const part = e.target.closest('[data-part]')?.dataset.part;
+    if (!part || !svg._ab) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (part === 'reset') {
+      delete chantier.tArrow;
+      updateTInset(chantier);
+      opt.onChange();
+      return;
+    }
+    fg = { part, id: e.pointerId, x0: e.clientX, y0: e.clientY, a: [...svg._ab.a], b: [...svg._ab.b] };
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!fg || e.pointerId !== fg.id) return;
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    const dx = e.clientX - fg.x0;
+    const dy = e.clientY - fg.y0;
+    const bouge = (p, on) => (on ? [Math.min(Math.max(p[0] + dx, 0), W), Math.min(Math.max(p[1] + dy, 0), H)] : p);
+    const a = bouge(fg.a, fg.part !== 'b');
+    const b = bouge(fg.b, fg.part !== 'a');
+    chantier.tArrow = { a: [a[0] / W, a[1] / H], b: [b[0] / W, b[1] / H] };
+    updateTInset(chantier);
+  });
+  const finFleche = (e) => {
+    if (!fg || e.pointerId !== fg.id) return;
+    fg = null;
+    opt.onChange();
+  };
+  svg.addEventListener('pointerup', finFleche);
+  svg.addEventListener('pointercancel', finFleche);
+
   root.querySelector('#f-inset-reset').addEventListener('click', (e) => {
     e.stopPropagation();
     delete chantier.tInset;
@@ -627,6 +672,7 @@ function updateTInset(chantier) {
   wrap.classList.remove('inset-tl', 'inset-tr', 'inset-bl', 'inset-br');
   wrap.classList.add(`inset-${coin}`);
   box.hidden = false;
+  box.classList.toggle('side', !!chantier.tInsetSide);
   placeInset(wrap, box, chantier.tInset);
 
   const dist = depart.distanceTo([T.lat, T.lng]);
@@ -668,15 +714,28 @@ function updateTInset(chantier) {
   if (vInset && vInset[0] > 0) tFin = Math.min(tFin, vInset[0]);
   let tDebut = Math.max(tSortie + 8, 0);
   if (tFin - tDebut < 40) tDebut = Math.max(0, tFin - 40);
-  const a = [c[0] + u[0] * tDebut, c[1] + u[1] * tDebut];
-  const b = [c[0] + u[0] * tFin, c[1] + u[1] * tFin];
-  const ang = (Math.atan2(u[1], u[0]) * 180) / Math.PI;
+  let a = [c[0] + u[0] * tDebut, c[1] + u[1] * tDebut];
+  let b = [c[0] + u[0] * tFin, c[1] + u[1] * tFin];
+  const WW = wrap.clientWidth;
+  const HH = wrap.clientHeight;
+  const fl = chantier.tArrow; // flèche placée à la main (fractions de la zone du plan)
+  if (fl) {
+    a = [fl.a[0] * WW, fl.a[1] * HH];
+    b = [fl.b[0] * WW, fl.b[1] * HH];
+  }
+  svg._ab = { a, b };
+  const lg = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  const v = [(b[0] - a[0]) / lg, (b[1] - a[1]) / lg];
+  const ang = (Math.atan2(v[1], v[0]) * 180) / Math.PI;
   svg.setAttribute('viewBox', `0 0 ${wrap.clientWidth} ${wrap.clientHeight}`);
   svg.innerHTML = `
-    <line x1="${a[0]}" y1="${a[1]}" x2="${b[0] - u[0] * 10}" y2="${b[1] - u[1] * 10}" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
-    <line x1="${a[0]}" y1="${a[1]}" x2="${b[0] - u[0] * 10}" y2="${b[1] - u[1] * 10}" stroke="#1a8fd0" stroke-width="4" stroke-dasharray="10 6" stroke-linecap="round"/>
+    <line x1="${a[0]}" y1="${a[1]}" x2="${b[0] - v[0] * 10}" y2="${b[1] - v[1] * 10}" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+    <line x1="${a[0]}" y1="${a[1]}" x2="${b[0] - v[0] * 10}" y2="${b[1] - v[1] * 10}" stroke="#1a8fd0" stroke-width="4" stroke-dasharray="10 6" stroke-linecap="round"/>
     <g transform="translate(${b[0]} ${b[1]}) rotate(${ang})"><path d="M2 0L-16 -10L-12 0L-16 10Z" fill="#1a8fd0" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>
-`;
+    <line class="ta-grip" data-part="body" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="transparent" stroke-width="26"/>
+    <circle class="ta-grip ta-end" data-part="a" cx="${a[0]}" cy="${a[1]}" r="9"/>
+    <circle class="ta-grip ta-end" data-part="b" cx="${b[0] - v[0] * 6}" cy="${b[1] - v[1] * 6}" r="9"/>
+    ${fl ? `<g class="ta-grip ta-reset" data-part="reset" transform="translate(${a[0] - v[0] * 24} ${a[1] - v[1] * 24})"><circle r="12"/><text y="5" text-anchor="middle">↺</text></g>` : ''}`;
 }
 
 /** Passe en mise en page A4, recadre la carte, attend les fonds de carte puis imprime. */

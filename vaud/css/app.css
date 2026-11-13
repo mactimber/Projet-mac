@@ -442,3 +442,22 @@ body.viewer #map { bottom: 0; }
 .inset-free .f-inset-reset { display: block; }
 .print-layout .f-inset-handle, .print-layout .f-inset-reset { display: none !important; }
 .print-layout.inset-free .f-inset, .print-layout .inset-free .f-inset { max-width: none; }
+
+/* Flèche du point T déplaçable */
+.f-tarrow .ta-grip { pointer-events: all; cursor: move; touch-action: none; }
+.f-tarrow .ta-end { fill: rgba(255,255,255,.55); stroke: #1a8fd0; stroke-width: 2.5; cursor: grab; }
+.f-tarrow .ta-reset circle { fill: #fff; stroke: #1a8fd0; stroke-width: 1.5; }
+.f-tarrow .ta-reset text { font: 700 15px system-ui, sans-serif; fill: #0d5f8f; }
+.print-layout .f-tarrow .ta-end, .print-layout .f-tarrow .ta-reset { display: none; }
+/* Cartouche : texte à côté de la carte */
+.f-inset-side {
+  position: absolute; top: 3px; right: 3px; z-index: 700; min-height: 0; width: 26px; height: 26px; padding: 0;
+  border-radius: 50%; border: 1.5px solid #1a8fd0; background: #fff; color: #0d5f8f; font-size: 15px; line-height: 1;
+}
+.f-inset.side { display: flex; align-items: stretch; }
+.f-inset.side #fiche-inset-map { width: 52%; flex: none; }
+.f-inset.side .f-inset-cap { flex: 1; border-top: 0; border-left: 1.5px solid #1a8fd0; display: flex; flex-direction: column; justify-content: center; padding: 4px 6px; }
+.f-inset.side .f-inset-side { right: auto; left: calc(52% - 29px); }
+.print-layout .f-inset-side { display: none !important; }
+.f-inset.side { width: 62%; max-width: 400px; }
+.print-layout .f-inset.side { width: 110mm; }
