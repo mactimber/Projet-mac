@@ -290,6 +290,7 @@ export function renderFiche(root, chantier, opt) {
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
         ${kindsUsed.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}
         ${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}
+        <span id="lg-tarrow" hidden><svg width="34" height="18" viewBox="0 0 34 18"><path d="M2 9H24" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M2 9H24" stroke="#1a8fd0" stroke-width="3.5" stroke-dasharray="6 4" stroke-linecap="round"/><path d="M33 9L19 2L22 9L19 16Z" fill="#1a8fd0"/></svg>Direction du point T</span>
       </div>
       <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position sur ce plan</span></div>
       </div>
@@ -634,6 +635,12 @@ function setupInsetDrag(root, chantier, opt) {
   });
 }
 
+/** Ligne « Direction du point T » dans la légende, seulement quand la flèche automatique est dessinée. */
+function legendeFleche(on) {
+  const el = document.getElementById('lg-tarrow');
+  if (el) el.hidden = !on;
+}
+
 /** Affiche le cartouche et la flèche quand le point T est en dehors du plan affiché. */
 function updateTInset(chantier) {
   const wrap = ficheMap?.getContainer().closest('.f-mapwrap');
@@ -647,6 +654,7 @@ function updateTInset(chantier) {
   if (!T || !pts.length || marge.contains([T.lat, T.lng])) {
     box.hidden = true;
     svg.innerHTML = '';
+    legendeFleche(false);
     wrap.classList.remove('inset-tl', 'inset-tr', 'inset-bl', 'inset-br');
     return;
   }
@@ -709,6 +717,7 @@ function updateTInset(chantier) {
   // Chemin d'accès dessiné à la main : il remplace la flèche automatique
   if (acces) {
     svg.innerHTML = '';
+    legendeFleche(false);
     svg._ab = null;
     return;
   }
@@ -741,6 +750,7 @@ function updateTInset(chantier) {
   const lg = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
   const v = [(b[0] - a[0]) / lg, (b[1] - a[1]) / lg];
   const ang = (Math.atan2(v[1], v[0]) * 180) / Math.PI;
+  legendeFleche(true);
   svg.setAttribute('viewBox', `0 0 ${wrap.clientWidth} ${wrap.clientHeight}`);
   svg.innerHTML = `
     <line x1="${a[0]}" y1="${a[1]}" x2="${b[0] - v[0] * 10}" y2="${b[1] - v[1] * 10}" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
