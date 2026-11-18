@@ -139,7 +139,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
   const firstHeader = {
     xml: table([[
       { text: [p([['Test compétence E17', { bold: true, size: 16, color: VERT }]], { align: 'left', spaceAfter: 0 })] },
-      { text: [`<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:after="0"/></w:pPr>${logoP.run}</w:p>`] },
+      { text: [`<w:p><w:pPr><w:spacing w:after="0"/><w:jc w:val="right"/></w:pPr>${logoP.run}</w:p>`] },
     ]], { widths: [60, 40], header: false, borders: false, after: false, vAlign: 'top' }) + '<w:p/>',
     images: logoP.images,
   };
@@ -286,7 +286,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     .forEach((t) => B.push(LISTE(4, t)));
 
   /* 5. Qualification */
-  T1('Qualification des collaborateurs et des entrepreneurs');
+  T1('Qualification des collaborateurs et des entrepreneurs participant aux travaux');
   B.push(A_ECRIRE('formation et qualification de chaque personne et de chaque entreprise, et pourquoi elles conviennent pour ce chantier.'));
   const pers = [
     info.responsable && [info.responsable, info.resp_role || 'Responsable du chantier'],
@@ -358,7 +358,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
       hCm = 15;
       wCm = (hCm * plan.width) / plan.height;
     }
-    B.push(`<w:p><w:pPr><w:keepNext/><w:jc w:val="center"/><w:spacing w:after="60"/></w:pPr>${image(addImage(plan.bytes), imgId++, wCm, hCm, 'Plan de coupe')}</w:p>`);
+    B.push(`<w:p><w:pPr><w:keepNext/><w:spacing w:after="60"/><w:jc w:val="center"/></w:pPr>${image(addImage(plan.bytes), imgId++, wCm, hCm, 'Plan de coupe')}</w:p>`);
   } else {
     B.push(T(PH('coller ici le plan de coupe')));
   }
