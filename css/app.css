@@ -407,3 +407,47 @@ body.viewer #map { bottom: 0; }
 .f-plan-foot .f-qr { flex-direction: column; align-items: center; text-align: center; margin-left: 0; gap: 2px; font-size: 9.5px; }
 .f-plan-foot .f-qr #f-qr-img svg { width: 24mm; height: 24mm; }
 .print-layout .f-plan-foot .f-qr #f-qr-img svg { width: 26mm; height: 26mm; }
+/* Point T éloigné : cartouche + flèche */
+.f-inset {
+  position: absolute; z-index: 520; width: 40%; min-width: 140px; max-width: 260px; background: #fff;
+  border: 2.5px solid #1a8fd0; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.35); overflow: hidden;
+}
+#fiche-inset-map { width: 100%; aspect-ratio: 4 / 3; }
+.f-inset-cap { font: 11px/1.25 system-ui, sans-serif; padding: 2px 5px 3px; border-top: 1.5px solid #1a8fd0; }
+.f-inset-cap b { color: #fff; background: #1a8fd0; border-radius: 50%; display: inline-block; width: 15px; text-align: center; }
+.f-inset-cap span { font-weight: 700; color: #0d5f8f; }
+.f-inset-cap strong { color: #0d5f8f; font-size: 12px; }
+.inset-tl .f-inset { top: 12px; left: 8px; }
+.inset-tr .f-inset { top: 12px; right: 8px; }
+.inset-bl .f-inset { bottom: 58px; left: 8px; }
+.inset-br .f-inset { bottom: 22px; right: 8px; }
+.inset-tr .f-north { right: auto; left: 8px; }
+.f-recadrer { left: 50%; transform: translateX(-50%); }
+.print-layout .f-inset { width: 72mm; max-width: none; }
+
+.f-inset { touch-action: none; cursor: move; user-select: none; -webkit-user-select: none; }
+.f-inset.dragging { box-shadow: 0 4px 14px rgba(0,0,0,.45); opacity: .92; }
+.f-inset-handle {
+  position: absolute; right: 0; bottom: 0; width: 26px; height: 26px; z-index: 700; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, #1a8fd0 50%);
+}
+.f-inset-reset {
+  position: absolute; top: 3px; left: 3px; z-index: 700; min-height: 0; width: 26px; height: 26px; padding: 0;
+  border-radius: 50%; border: 1.5px solid #1a8fd0; background: #fff; color: #0d5f8f; font-size: 15px; line-height: 1; display: none;
+}
+.inset-free .f-inset-reset { display: block; }
+.print-layout .f-inset-handle, .print-layout .f-inset-reset { display: none !important; }
+.print-layout.inset-free .f-inset, .print-layout .inset-free .f-inset { max-width: none; }
+
+/* Cartouche : texte à côté de la carte */
+.f-inset-side {
+  position: absolute; top: 3px; right: 3px; z-index: 700; min-height: 0; width: 26px; height: 26px; padding: 0;
+  border-radius: 50%; border: 1.5px solid #1a8fd0; background: #fff; color: #0d5f8f; font-size: 15px; line-height: 1;
+}
+.f-inset.side { display: flex; align-items: stretch; }
+.f-inset.side #fiche-inset-map { width: 52%; flex: none; }
+.f-inset.side .f-inset-cap { flex: 1; border-top: 0; border-left: 1.5px solid #1a8fd0; display: flex; flex-direction: column; justify-content: center; padding: 4px 6px; }
+.f-inset.side .f-inset-side { right: auto; left: calc(52% - 29px); }
+.print-layout .f-inset-side { display: none !important; }
+.f-inset.side { width: 62%; max-width: 400px; }
+.print-layout .f-inset.side { width: 110mm; }

@@ -43,6 +43,23 @@ const POINT_SVG = {
   // Trois triangles bruns identiques, emboîtés en zigzag (▶ ◀ ▶)
   pile: [60, 32, `<g fill="#4e3418" stroke="#111" stroke-width="1.3" stroke-linejoin="round">
     <path d="M2 1L58 3.5L2 13Z"/><path d="M58 6L58 26L4 16Z"/><path d="M2 19L58 28.5L2 31Z"/></g>`],
+  // Arbre à démonter : sapin vert, tronçons marqués en rouge
+  arbre_demonter: [40, 40, `<circle cx="20" cy="20" r="18" fill="#fff" stroke="#111" stroke-width="2"/>
+    <path d="M20 4.5L29.5 17H24.5L31.5 27.5H8.5L15.5 17H10.5Z" fill="#2e7d32" stroke="#0b4f1a" stroke-width="1" stroke-linejoin="round"/>
+    <rect x="18" y="27.5" width="4" height="7" fill="#6d4c2f"/>
+    <path d="M7.5 12.5H32.5M6 21.5H34" stroke="${RED}" stroke-width="2.4" stroke-dasharray="3.5 2"/>`],
+  // Arbre dangereux : arbre sec, cercle rouge et point d'exclamation
+  arbre_dangereux: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#fff" stroke="${RED}" stroke-width="3"/>
+    <path d="M18 34V10M18 21L11 14M18 17L24 11M18 26L25 21M11 14L9 10.5M24 11L26.5 8" stroke="#5d4037" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+    <circle cx="30.5" cy="30.5" r="7" fill="${RED}" stroke="#fff" stroke-width="1.5"/>
+    <rect x="29.4" y="25.8" width="2.2" height="5.6" rx="1" fill="#fff"/><circle cx="30.5" cy="34" r="1.3" fill="#fff"/>`],
+  // Arbre à tailler : feuillu, branche latérale coupée (trait rouge)
+  arbre_tailler: [40, 40, `<circle cx="20" cy="20" r="18" fill="#fff" stroke="#111" stroke-width="2"/>
+    <rect x="14.6" y="20" width="3.8" height="14.5" fill="#6d4c2f"/>
+    <path d="M17 25.5L29.5 18.5" stroke="#6d4c2f" stroke-width="2.6" stroke-linecap="round"/>
+    <circle cx="16.5" cy="14" r="9" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
+    <circle cx="31" cy="17.5" r="3.6" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
+    <path d="M21.2 18.6L25.4 26.8" stroke="${RED}" stroke-width="2.6" stroke-linecap="round"/>`],
   depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
@@ -55,9 +72,13 @@ export const SYMBOLS = [
   { kind: 'heli', group: 'Secours', label: 'Sauvetage hélico (H)', mode: 'point', unique: true, coordLabel: true, hint: 'Touchez la place pour le sauvetage hélicoptère.' },
   { kind: 'point_t', group: 'Secours', label: 'Sauvetage terrestre (T)', mode: 'point', unique: true, coordLabel: true, hint: 'Touchez le point de rencontre avec l\'ambulance.' },
   { kind: 'vehicule', group: 'Secours', label: 'Véhicule + pharmacie', mode: 'point', hint: 'Touchez l\'emplacement du véhicule et de la pharmacie.' },
+  { kind: 'acces_t', group: 'Secours', label: 'Accès au point T (route)', mode: 'line', color: '#1a8fd0', outline: '#fff', weight: 4, dash: '10 7', arrowEnd: true, midArrows: true, hint: 'Suivez la route du chantier jusqu\'au point T (dézoomez si besoin), puis « Terminer ».' },
   { kind: 'helico', group: 'Secours', label: 'Hélicoptère', mode: 'point', hint: 'Touchez la place de l\'hélicoptère.' },
   // --- Coupe
   { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis la direction de chute.' },
+  { kind: 'arbre_demonter', group: 'Coupe', label: 'Arbre à démonter', mode: 'point', askText: '', hint: 'Touchez l\'arbre à démonter.' },
+  { kind: 'arbre_dangereux', group: 'Coupe', label: 'Arbre dangereux', mode: 'point', askText: '', hint: 'Touchez l\'arbre dangereux.' },
+  { kind: 'arbre_tailler', group: 'Coupe', label: 'Arbre à tailler', mode: 'point', askText: '', hint: 'Touchez l\'arbre à tailler.' },
   { kind: 'debut_vert', group: 'Coupe', label: 'Début du travail (vert)', mode: 'arrow', color: '#2bb24c', hint: 'Touchez le départ, puis la direction du travail.' },
   { kind: 'debut_jaune', group: 'Coupe', label: 'Début du travail (jaune)', mode: 'arrow', color: '#f7d000', hint: 'Touchez le départ, puis la direction du travail.' },
   { kind: 'nacelle', group: 'Coupe', label: 'Nacelle', mode: 'point', hint: 'Touchez l\'emplacement de la nacelle.' },
@@ -85,7 +106,7 @@ function lineIcon(def) {
   const d = 'M5 33L35 7';
   let s = '';
   if (def.outline) s += `<path d="${d}" stroke="${def.outline}" stroke-width="${def.weight + 3}" stroke-linecap="round"/>`;
-  s += `<path d="${d}" stroke="${def.color}" stroke-width="${def.weight}" stroke-linecap="round"/>`;
+  s += `<path d="${d}" stroke="${def.color}" stroke-width="${def.weight}" stroke-linecap="round"${def.dash ? ' stroke-dasharray="6 4"' : ''}/>`;
   if (def.arrowEnd) s += `<path d="M38 4l-11 3.5 7.5 7.5z" fill="${def.color}"/>`;
   if (def.arrowStart) s += `<path d="M2 36l11-3.5-7.5-7.5z" fill="${def.color}"/>`;
   if (def.kind === 'electrique') s += '<path d="M20 11l-5 9h4l-2 7 7-10h-4.5z" fill="#ffd600" stroke="#111" stroke-width="1"/>';
