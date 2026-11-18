@@ -203,6 +203,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     dangers.includes('Tiers (promeneurs…)') && 'les promeneurs et autres usagers',
     dangers.includes('Chute de pierres') && 'les chutes de pierres',
     dangers.includes('Pente raide') && 'la pente raide',
+    n('arbre_dangereux') && `${n('arbre_dangereux') > 1 ? `${n('arbre_dangereux')} arbres dangereux` : 'un arbre dangereux'} (voir plan)`,
   ].filter(Boolean);
   B.push(p([
     `Le chantier « ${nom} » se situe sur la commune de `, commune ? commune : PH('commune'),
@@ -219,6 +220,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
   T1('Méthodes de travail');
   B.push(A_ECRIRE('méthode choisie (abattage, façonnage, débardage, évacuation), justification, variante écartée et pourquoi.'));
   if (info.methode) B.push(T('Selon le relevé de terrain : ', info.methode.replace(/\.$/, ''), '.'));
+  if (n('arbre_demonter')) B.push(T(`${n('arbre_demonter') > 1 ? `${n('arbre_demonter')} arbres doivent` : 'Un arbre doit'} être démonté${n('arbre_demonter') > 1 ? 's' : ''} (voir plan, point 9) : `, PH('méthode de démontage : grimpe, nacelle, rétention…'), '.'));
   B.push(Q('Abattage'), VIDES(1), Q('Façonnage'), VIDES(1), Q('Débardage'), VIDES(1), Q('Évacuation des bois'));
   B.push(n('pile') + n('depot') ? T(`Les bois sont stockés sur ${n('pile') + n('depot')} place(s) de dépôt indiquée(s) sur le plan (point 9).`) : VIDES(1));
   B.push(Q('Justification du choix'), VIDES(1), Q('Variante écartée et pourquoi'), VIDES(1));
@@ -271,7 +273,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
   if (qui.length) qui.forEach(([nm, role]) => B.push(PUCE([`${nm}${role ? ` (${role})` : ''} : `, PH('tâche')])));
   else B.push(VIDES(1));
   B.push(Q('Dangers et obstacles'));
-  const obst = [...dangers, ligneElec && !dangers.includes('Ligne électrique') && 'ligne électrique'].filter(Boolean);
+  const obst = [...dangers, ligneElec && !dangers.includes('Ligne électrique') && 'ligne électrique', n('arbre_dangereux') && 'arbres dangereux', n('arbre_demonter') && 'arbres à démonter'].filter(Boolean);
   B.push(obst.length ? T(`Faites particulièrement attention à : ${obst.join(', ').toLowerCase()}. Les zones de danger sont indiquées sur le plan (point 9).`) : VIDES(1));
   B.push(Q('Assortiments'));
   B.push(T(PH('assortiments, longueurs, qualités, places de dépôt'), '.'));
