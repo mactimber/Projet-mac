@@ -111,7 +111,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
   const virgule = lieu.lastIndexOf(', ');
   const lieuDit = virgule > 0 ? lieu.slice(0, virgule) : lieu;
   const commune = virgule > 0 ? lieu.slice(virgule + 2).split(' – ')[0] : '';
-  const lieuT = (info.localite_t || Tp?.place || '').split(' – ')[0];
+  const lieuT = (info.localite_t || '').trim() || (Tp?.place || '').split(' – ')[0];
   const acces = sym('acces_t').find((s) => s.pts?.length > 1);
   let accesTxt = '';
   if (acces) {

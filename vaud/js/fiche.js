@@ -384,6 +384,7 @@ export function renderFiche(root, chantier, opt) {
     };
     el.addEventListener('input', () => {
       info[el.dataset.key] = el.value;
+      if (el.dataset.key === 'localite_t') updateTInset(chantier); // le cartouche suit la case « Lieu / adresse »
       grow();
       opt.onChange();
     });
@@ -579,6 +580,12 @@ function setupInsetDrag(root, chantier, opt) {
   });
 }
 
+/** Lieu du point T pour le cartouche : le texte écrit sur la fiche tel quel, sinon le lieu trouvé sur la carte (raccourci). */
+function lieuT(info, T) {
+  const ecrit = (info.localite_t || '').trim();
+  return ecrit || (T.place || '').split(' – ')[0];
+}
+
 /** Affiche le cartouche quand le point T est en dehors du plan affiché. */
 function updateTInset(chantier) {
   const wrap = ficheMap?.getContainer().closest('.f-mapwrap');
@@ -624,8 +631,8 @@ function updateTInset(chantier) {
   }
   const cap = bearing(depart, [T.lat, T.lng]);
   const dir = DIRS[Math.round(cap / 45) % 8];
-  const lieu = chantier.info.localite_t || T.place || '';
-  wrap.querySelector('#f-inset-cap').innerHTML = `<strong>Point T à ${fmtDist(dist)} ${acces ? 'par la route' : `au ${dir}`}</strong><br>${lieu ? `${esc(lieu.split(' – ')[0])}<br>` : ''}<span>${formatLV95(T.lat, T.lng).replace(', ', ' / ')}</span>`;
+  const lieu = lieuT(chantier.info, T);
+  wrap.querySelector('#f-inset-cap').innerHTML = `<strong>Point T à ${fmtDist(dist)} ${acces ? 'par la route' : `au ${dir}`}</strong><br>${lieu ? `${esc(lieu).replace(/\n/g, '<br>')}<br>` : ''}<span>${formatLV95(T.lat, T.lng).replace(', ', ' / ')}</span>`;
 
   // Petite carte zoomée sur le point T
   const im = wrap.querySelector('#fiche-inset-map');

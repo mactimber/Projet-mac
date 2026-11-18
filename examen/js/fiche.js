@@ -387,6 +387,7 @@ export function renderFiche(root, chantier, opt) {
     };
     el.addEventListener('input', () => {
       info[el.dataset.key] = el.value;
+      if (el.dataset.key === 'localite_t') updateTInset(chantier); // le cartouche suit la case « Lieu / adresse »
       grow();
       opt.onChange();
     });
@@ -583,6 +584,12 @@ function setupInsetDrag(root, chantier, opt) {
   });
 }
 
+/** Lieu du point T pour le cartouche : le texte écrit sur la fiche tel quel, sinon le lieu trouvé sur la carte (raccourci). */
+function lieuT(info, T) {
+  const ecrit = (info.localite_t || '').trim();
+  return ecrit || (T.place || '').split(' – ')[0];
+}
+
 /** Texte du cartouche : distance (par la route si le chemin d'accès est dessiné), lieu, coordonnées. */
 function tTexte(chantier, T, depart) {
   const acces = chantier.symbols.find((s) => s.kind === 'acces_t' && s.pts?.length > 1);
@@ -595,7 +602,7 @@ function tTexte(chantier, T, depart) {
   return {
     acces,
     titre: `Point T à ${fmtDist(dist)} ${acces ? 'par la route' : `au ${dir}`}`,
-    lieu: (chantier.info.localite_t || T.place || '').split(' – ')[0],
+    lieu: lieuT(chantier.info, T),
     coords: formatLV95(T.lat, T.lng).replace(', ', ' / '),
   };
 }
@@ -638,7 +645,7 @@ function updateTInset(chantier) {
   placeInset(wrap, box, chantier.tInset);
 
   const { acces, titre, lieu, coords } = tTexte(chantier, T, depart);
-  wrap.querySelector('#f-inset-cap').innerHTML = `<strong>${esc(titre)}</strong><br>${lieu ? `${esc(lieu)}<br>` : ''}<span>${esc(coords)}</span>`;
+  wrap.querySelector('#f-inset-cap').innerHTML = `<strong>${esc(titre)}</strong><br>${lieu ? `${esc(lieu).replace(/\n/g, '<br>')}<br>` : ''}<span>${esc(coords)}</span>`;
 
   // Petite carte zoomée sur le point T
   const im = wrap.querySelector('#fiche-inset-map');
@@ -699,7 +706,7 @@ async function dessinerCartouche(plan, chantier) {
   const w = Math.round(pos ? Math.min(Math.max(pos.w * W * echelle, 220), W - 16) : (W * (side ? 110 : 72) * echelle) / 194);
   const mapW = Math.round(side ? w * 0.52 : w);
   const mapH = Math.round((mapW * 3) / 4);
-  const lignes = [[titre, true, '#0d5f8f'], ...(lieu ? [[lieu, false, '#111']] : []), [coords, true, '#0d5f8f']];
+  const lignes = [[titre, true, '#0d5f8f'], ...(lieu ? lieu.split('\n').filter(Boolean).map((l) => [l, false, '#111']) : []), [coords, true, '#0d5f8f']];
   const capW = side ? w - mapW : w;
   // texte coupé en lignes selon la largeur
   ctx.font = `${11 * k}px Arial, sans-serif`;
