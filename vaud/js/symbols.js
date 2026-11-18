@@ -53,6 +53,13 @@ const POINT_SVG = {
     <path d="M18 34V10M18 21L11 14M18 17L24 11M18 26L25 21M11 14L9 10.5M24 11L26.5 8" stroke="#5d4037" stroke-width="2.6" stroke-linecap="round" fill="none"/>
     <circle cx="30.5" cy="30.5" r="7" fill="${RED}" stroke="#fff" stroke-width="1.5"/>
     <rect x="29.4" y="25.8" width="2.2" height="5.6" rx="1" fill="#fff"/><circle cx="30.5" cy="34" r="1.3" fill="#fff"/>`],
+  // Arbre à tailler : feuillu, branche latérale coupée (trait rouge)
+  arbre_tailler: [40, 40, `<circle cx="20" cy="20" r="18" fill="#fff" stroke="#111" stroke-width="2"/>
+    <rect x="14.6" y="20" width="3.8" height="14.5" fill="#6d4c2f"/>
+    <path d="M17 25.5L29.5 18.5" stroke="#6d4c2f" stroke-width="2.6" stroke-linecap="round"/>
+    <circle cx="16.5" cy="14" r="9" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
+    <circle cx="31" cy="17.5" r="3.6" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
+    <path d="M21.2 18.6L25.4 26.8" stroke="${RED}" stroke-width="2.6" stroke-linecap="round"/>`],
   depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
@@ -71,6 +78,7 @@ export const SYMBOLS = [
   { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis la direction de chute.' },
   { kind: 'arbre_demonter', group: 'Coupe', label: 'Arbre à démonter', mode: 'point', askText: '', hint: 'Touchez l\'arbre à démonter.' },
   { kind: 'arbre_dangereux', group: 'Coupe', label: 'Arbre dangereux', mode: 'point', askText: '', hint: 'Touchez l\'arbre dangereux.' },
+  { kind: 'arbre_tailler', group: 'Coupe', label: 'Arbre à tailler', mode: 'point', askText: '', hint: 'Touchez l\'arbre à tailler.' },
   { kind: 'debut_vert', group: 'Coupe', label: 'Début du travail (vert)', mode: 'arrow', color: '#2bb24c', hint: 'Touchez le départ, puis la direction du travail.' },
   { kind: 'debut_jaune', group: 'Coupe', label: 'Début du travail (jaune)', mode: 'arrow', color: '#f7d000', hint: 'Touchez le départ, puis la direction du travail.' },
   { kind: 'nacelle', group: 'Coupe', label: 'Nacelle', mode: 'point', hint: 'Touchez l\'emplacement de la nacelle.' },

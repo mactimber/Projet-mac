@@ -220,6 +220,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
   T1('Méthodes de travail');
   B.push(A_ECRIRE('méthode choisie (abattage, façonnage, débardage, évacuation), justification, variante écartée et pourquoi.'));
   if (info.methode) B.push(T('Selon le relevé de terrain : ', info.methode.replace(/\.$/, ''), '.'));
+  if (n('arbre_tailler')) B.push(T(`${n('arbre_tailler') > 1 ? `${n('arbre_tailler')} arbres sont` : 'Un arbre est'} à tailler (voir plan, point 9) : `, PH('quelles branches, méthode : grimpe, nacelle…'), '.'));
   if (n('arbre_demonter')) B.push(T(`${n('arbre_demonter') > 1 ? `${n('arbre_demonter')} arbres doivent` : 'Un arbre doit'} être démonté${n('arbre_demonter') > 1 ? 's' : ''} (voir plan, point 9) : `, PH('méthode de démontage : grimpe, nacelle, rétention…'), '.'));
   B.push(Q('Abattage'), VIDES(1), Q('Façonnage'), VIDES(1), Q('Débardage'), VIDES(1), Q('Évacuation des bois'));
   B.push(n('pile') + n('depot') ? T(`Les bois sont stockés sur ${n('pile') + n('depot')} place(s) de dépôt indiquée(s) sur le plan (point 9).`) : VIDES(1));
