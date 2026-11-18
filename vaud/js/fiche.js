@@ -274,7 +274,6 @@ export function renderFiche(root, chantier, opt) {
         <div id="fiche-map"></div>
         <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
         <div class="f-ratio" id="f-ratio"></div>
-        <svg class="f-tarrow" id="f-tarrow" aria-hidden="true"></svg>
         <div class="f-inset" id="f-inset" hidden>
           <div id="fiche-inset-map"></div>
           <button type="button" class="f-inset-reset no-print" id="f-inset-reset" title="Remettre à sa place" aria-label="Remettre le cartouche à sa place">↺</button>
@@ -290,7 +289,6 @@ export function renderFiche(root, chantier, opt) {
         ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
         ${kindsUsed.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}
         ${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}
-        <span id="lg-tarrow" hidden><svg width="34" height="18" viewBox="0 0 34 18"><path d="M2 9H24" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M2 9H24" stroke="#1a8fd0" stroke-width="3.5" stroke-dasharray="6 4" stroke-linecap="round"/><path d="M33 9L19 2L22 9L19 16Z" fill="#1a8fd0"/></svg>Direction du point T</span>
       </div>
       <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position sur ce plan</span></div>
       </div>
@@ -507,23 +505,6 @@ function tLoin(chantier) {
   return ecart > Math.max(150, taille * 0.5) ? { T, bounds: b } : null;
 }
 
-/** Intersection rayon (p + t·d) / rectangle [x0,y0,x1,y1] : [tEntrée, tSortie] ou null. */
-function rayBox(p, d, r) {
-  let t0 = -Infinity;
-  let t1 = Infinity;
-  for (const [pi, di, a, b] of [[p[0], d[0], r[0], r[2]], [p[1], d[1], r[1], r[3]]]) {
-    if (Math.abs(di) < 1e-9) {
-      if (pi < a || pi > b) return null;
-    } else {
-      const u = (a - pi) / di;
-      const v = (b - pi) / di;
-      t0 = Math.max(t0, Math.min(u, v));
-      t1 = Math.min(t1, Math.max(u, v));
-    }
-  }
-  return t0 <= t1 ? [t0, t1] : null;
-}
-
 const fmtDist = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(m / 10) * 10} m`);
 const DIRS = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest'];
 
@@ -590,43 +571,6 @@ function setupInsetDrag(root, chantier, opt) {
     opt.onChange();
   });
 
-  // Flèche : glisser le trait pour la déplacer, glisser un bout pour l'allonger / la tourner
-  const svg = root.querySelector('#f-tarrow');
-  let fg = null;
-  svg.addEventListener('pointerdown', (e) => {
-    const part = e.target.closest('[data-part]')?.dataset.part;
-    if (!part || !svg._ab) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (part === 'reset') {
-      delete chantier.tArrow;
-      updateTInset(chantier);
-      opt.onChange();
-      return;
-    }
-    fg = { part, id: e.pointerId, x0: e.clientX, y0: e.clientY, a: [...svg._ab.a], b: [...svg._ab.b] };
-    svg.setPointerCapture(e.pointerId);
-  });
-  svg.addEventListener('pointermove', (e) => {
-    if (!fg || e.pointerId !== fg.id) return;
-    const W = wrap.clientWidth;
-    const H = wrap.clientHeight;
-    const dx = e.clientX - fg.x0;
-    const dy = e.clientY - fg.y0;
-    const bouge = (p, on) => (on ? [Math.min(Math.max(p[0] + dx, 0), W), Math.min(Math.max(p[1] + dy, 0), H)] : p);
-    const a = bouge(fg.a, fg.part !== 'b');
-    const b = bouge(fg.b, fg.part !== 'a');
-    chantier.tArrow = { a: [a[0] / W, a[1] / H], b: [b[0] / W, b[1] / H] };
-    updateTInset(chantier);
-  });
-  const finFleche = (e) => {
-    if (!fg || e.pointerId !== fg.id) return;
-    fg = null;
-    opt.onChange();
-  };
-  svg.addEventListener('pointerup', finFleche);
-  svg.addEventListener('pointercancel', finFleche);
-
   root.querySelector('#f-inset-reset').addEventListener('click', (e) => {
     e.stopPropagation();
     delete chantier.tInset;
@@ -635,26 +579,17 @@ function setupInsetDrag(root, chantier, opt) {
   });
 }
 
-/** Ligne « Direction du point T » dans la légende, seulement quand la flèche automatique est dessinée. */
-function legendeFleche(on) {
-  const el = document.getElementById('lg-tarrow');
-  if (el) el.hidden = !on;
-}
-
-/** Affiche le cartouche et la flèche quand le point T est en dehors du plan affiché. */
+/** Affiche le cartouche quand le point T est en dehors du plan affiché. */
 function updateTInset(chantier) {
   const wrap = ficheMap?.getContainer().closest('.f-mapwrap');
   if (!wrap) return;
   const box = wrap.querySelector('#f-inset');
-  const svg = wrap.querySelector('#f-tarrow');
   const T = chantier.symbols.find((s) => s.kind === 'point_t');
   const pts = T ? chantierSansT(chantier, T) : [];
   const vue = ficheMap.getBounds();
   const marge = vue.pad(-0.03);
   if (!T || !pts.length || marge.contains([T.lat, T.lng])) {
     box.hidden = true;
-    svg.innerHTML = '';
-    legendeFleche(false);
     wrap.classList.remove('inset-tl', 'inset-tr', 'inset-bl', 'inset-br');
     return;
   }
@@ -662,8 +597,6 @@ function updateTInset(chantier) {
   const el = ficheMap.getContainer();
   const ox = el.offsetLeft;
   const oy = el.offsetTop;
-  const W = el.clientWidth;
-  const H = el.clientHeight;
   const px = (ll) => {
     const q = ficheMap.latLngToContainerPoint(L.latLng(ll));
     return [q.x + ox, q.y + oy];
@@ -714,52 +647,6 @@ function updateTInset(chantier) {
   insetMap.invalidateSize({ animate: false, pan: false });
   insetMap.setView([T.lat, T.lng], 16, { animate: false });
 
-  // Chemin d'accès dessiné à la main : il remplace la flèche automatique
-  if (acces) {
-    svg.innerHTML = '';
-    legendeFleche(false);
-    svg._ab = null;
-    return;
-  }
-
-  // Flèche : du bord du chantier vers le cartouche
-  const len = Math.hypot(d[0], d[1]) || 1;
-  const u = [d[0] / len, d[1] / len];
-  const zb = chantier.parcel?.length > 2 ? L.latLngBounds(chantier.parcel) : cb; // la flèche part du bord de la parcelle
-  const pb = [px([zb.getNorth(), zb.getWest()]), px([zb.getSouth(), zb.getEast()])];
-  const rc = [pb[0][0], pb[0][1], pb[1][0], pb[1][1]];
-  const m = 12;
-  const rMap = [ox + m, oy + m, ox + W - m, oy + H - m];
-  const ib = [box.offsetLeft - 6, box.offsetTop - 6, box.offsetLeft + box.offsetWidth + 6, box.offsetTop + box.offsetHeight + 6];
-  const tSortie = rayBox(c, u, rc)?.[1] ?? 0;
-  let tFin = rayBox(c, u, rMap)?.[1] ?? 0;
-  const vInset = rayBox(c, u, ib);
-  if (vInset && vInset[0] > 0) tFin = Math.min(tFin, vInset[0]);
-  let tDebut = Math.max(tSortie + 8, 0);
-  if (tFin - tDebut < 40) tDebut = Math.max(0, tFin - 40);
-  let a = [c[0] + u[0] * tDebut, c[1] + u[1] * tDebut];
-  let b = [c[0] + u[0] * tFin, c[1] + u[1] * tFin];
-  const WW = wrap.clientWidth;
-  const HH = wrap.clientHeight;
-  const fl = chantier.tArrow; // flèche placée à la main (fractions de la zone du plan)
-  if (fl) {
-    a = [fl.a[0] * WW, fl.a[1] * HH];
-    b = [fl.b[0] * WW, fl.b[1] * HH];
-  }
-  svg._ab = { a, b };
-  const lg = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-  const v = [(b[0] - a[0]) / lg, (b[1] - a[1]) / lg];
-  const ang = (Math.atan2(v[1], v[0]) * 180) / Math.PI;
-  legendeFleche(true);
-  svg.setAttribute('viewBox', `0 0 ${wrap.clientWidth} ${wrap.clientHeight}`);
-  svg.innerHTML = `
-    <line x1="${a[0]}" y1="${a[1]}" x2="${b[0] - v[0] * 10}" y2="${b[1] - v[1] * 10}" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
-    <line x1="${a[0]}" y1="${a[1]}" x2="${b[0] - v[0] * 10}" y2="${b[1] - v[1] * 10}" stroke="#1a8fd0" stroke-width="4" stroke-dasharray="10 6" stroke-linecap="round"/>
-    <g transform="translate(${b[0]} ${b[1]}) rotate(${ang})"><path d="M2 0L-16 -10L-12 0L-16 10Z" fill="#1a8fd0" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>
-    <line class="ta-grip" data-part="body" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="transparent" stroke-width="26"/>
-    <circle class="ta-grip ta-end" data-part="a" cx="${a[0]}" cy="${a[1]}" r="9"/>
-    <circle class="ta-grip ta-end" data-part="b" cx="${b[0] - v[0] * 6}" cy="${b[1] - v[1] * 6}" r="9"/>
-    ${fl ? `<g class="ta-grip ta-reset" data-part="reset" transform="translate(${a[0] - v[0] * 24} ${a[1] - v[1] * 24})"><circle r="12"/><text y="5" text-anchor="middle">↺</text></g>` : ''}`;
 }
 
 /** Passe en mise en page A4, recadre la carte, attend les fonds de carte puis imprime. */
