@@ -1,10 +1,10 @@
 // Fiche de secours : affichée sur le téléphone et imprimable en A4 (PDF).
 
 import { SYMBOLS, SYMBOL_BY_KIND, symbolSvg } from './symbols.js';
-import { symbolLayer, esc, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
-import { wgs84ToLV95, polygonArea, formatArea } from './swiss.js';
+import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
+import { wgs84ToLV95, formatLV95, polygonArea, formatArea } from './swiss.js';
 import { planLink, qrSvg } from './share.js';
-import { renderPlan } from './plan-image.js';
+import { renderPlan, canvasBytes } from './plan-image.js';
 import { dossierWord } from './dossier.js';
 
 /** Contacts par défaut – version vaudoise. */
@@ -277,6 +277,13 @@ export function renderFiche(root, chantier, opt) {
         <div id="fiche-map"></div>
         <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
         <div class="f-ratio" id="f-ratio"></div>
+        <div class="f-inset" id="f-inset" hidden>
+          <div id="fiche-inset-map"></div>
+          <button type="button" class="f-inset-reset no-print" id="f-inset-reset" title="Remettre à sa place" aria-label="Remettre le cartouche à sa place">↺</button>
+          <button type="button" class="f-inset-side no-print" id="f-inset-side" title="Texte à côté / en dessous" aria-label="Mettre le texte à côté ou en dessous">⇆</button>
+          <div class="f-inset-handle no-print" id="f-inset-handle" title="Agrandir / réduire" aria-label="Agrandir ou réduire le cartouche"></div>
+          <div class="f-inset-cap" id="f-inset-cap"></div>
+        </div>
         <button type="button" class="f-recadrer no-print" id="f-recadrer" ${chantier.ficheView ? '' : 'hidden'}>↺ Cadrage automatique</button>
       </div>
       <div class="f-plan-foot">
@@ -410,8 +417,13 @@ export function renderFiche(root, chantier, opt) {
     L.polygon(chantier.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(ficheMap);
   }
   for (const s of chantier.symbols) symbolLayer(s, { interactive: false })?.addTo(ficheMap);
+  if (insetMap) insetMap.remove();
+  insetMap = null;
+  ficheOpt = opt;
   fitFicheMap(chantier);
   ficheMap.on('zoomend', updateRatio);
+  ficheMap.on('moveend zoomend resize', () => updateTInset(chantier));
+  setupInsetDrag(root, chantier, opt);
   ficheMap.on('moveend', () => {
     if (recadrageAuto || root.classList.contains('print-layout') || root.classList.contains('capture-plan')) return;
     const b = ficheMap.getBounds();
@@ -441,10 +453,13 @@ function fitFicheMap(chantier, { auto = false } = {}) {
     ficheMap.fitBounds([[v.s, v.w], [v.n, v.e]], { animate: false });
     recadrageAuto = false;
     updateRatio();
+    updateTInset(chantier);
     return;
   }
+  const loin = tLoin(chantier);
   const pts = [...(chantier.parcel || [])];
   for (const s of chantier.symbols) {
+    if (loin && (s === loin.T || s.kind === 'acces_t')) continue; // point T éloigné : montré dans un cartouche
     if (s.lat != null) pts.push([s.lat, s.lng]);
     if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
     if (s.pts) pts.push(...s.pts);
@@ -454,20 +469,319 @@ function fitFicheMap(chantier, { auto = false } = {}) {
   else ficheMap.setView([46.8, 8.2], 8, { animate: false });
   recadrageAuto = false;
   updateRatio();
+  updateTInset(chantier);
+}
+
+/* ------------------------------------------------------------------ */
+/* Point T éloigné : cartouche (carte zoomée du point T) + flèche      */
+/* ------------------------------------------------------------------ */
+let insetMap = null;
+let ficheOpt = null;
+
+/** Tout le chantier sauf le point T. */
+function chantierSansT(chantier, T) {
+  const pts = [...(chantier.parcel || [])];
+  for (const s of chantier.symbols) {
+    if (s === T || s.kind === 'acces_t') continue; // le chemin d'accès va jusqu'au point T
+    if (s.lat != null) pts.push([s.lat, s.lng]);
+    if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
+    if (s.pts) pts.push(...s.pts);
+  }
+  return pts;
+}
+
+/**
+ * Le point T est « loin » s'il se trouve à plus de 150 m du chantier ET à plus de
+ * la moitié de la taille du chantier (sinon il agrandirait trop le plan).
+ */
+function tLoin(chantier) {
+  const T = chantier.symbols.find((s) => s.kind === 'point_t');
+  if (!T) return null;
+  const pts = chantierSansT(chantier, T);
+  if (!pts.length) return null;
+  const b = L.latLngBounds(pts);
+  const taille = Math.max(b.getSouthWest().distanceTo(b.getNorthEast()), 80);
+  const proche = L.latLng(
+    Math.min(Math.max(T.lat, b.getSouth()), b.getNorth()),
+    Math.min(Math.max(T.lng, b.getWest()), b.getEast()),
+  );
+  const ecart = proche.distanceTo([T.lat, T.lng]);
+  return ecart > Math.max(150, taille * 0.5) ? { T, bounds: b } : null;
+}
+
+const fmtDist = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(m / 10) * 10} m`);
+const DIRS = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest'];
+
+/** Place et taille choisies à la main : fractions de la zone du plan (valables aussi à l'impression). */
+function placeInset(wrap, box, pos) {
+  wrap.classList.toggle('inset-free', !!pos);
+  if (!pos) {
+    box.style.cssText = '';
+    return;
+  }
+  const W = wrap.clientWidth;
+  const H = wrap.clientHeight;
+  const w = Math.min(Math.max(pos.w * W, 110), W - 8);
+  box.style.cssText = `width:${w}px;min-width:0;max-width:none;right:auto;bottom:auto;left:0;top:0;`;
+  const h = box.offsetHeight;
+  const x = Math.min(Math.max(pos.x * W, 0), W - w);
+  const y = Math.min(Math.max(pos.y * H, 0), Math.max(H - h, 0));
+  box.style.left = `${x}px`;
+  box.style.top = `${y}px`;
+}
+
+/** Glisser le cartouche pour le déplacer ; poignée du coin pour changer sa taille. */
+function setupInsetDrag(root, chantier, opt) {
+  const box = root.querySelector('#f-inset');
+  const wrap = box.closest('.f-mapwrap');
+  const handle = root.querySelector('#f-inset-handle');
+  let geste = null;
+  const debut = (e, mode) => {
+    if (e.button > 0 || e.target.closest('button')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    geste = { mode, id: e.pointerId, x0: e.clientX, y0: e.clientY, l: box.offsetLeft, t: box.offsetTop, w: box.offsetWidth };
+    box.setPointerCapture(e.pointerId);
+    box.classList.add('dragging');
+  };
+  box.addEventListener('pointerdown', (e) => debut(e, 'move'));
+  handle.addEventListener('pointerdown', (e) => debut(e, 'size'));
+  box.addEventListener('pointermove', (e) => {
+    if (!geste || e.pointerId !== geste.id) return;
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    const dx = e.clientX - geste.x0;
+    const dy = e.clientY - geste.y0;
+    if (geste.mode === 'move') {
+      chantier.tInset = { x: (geste.l + dx) / W, y: (geste.t + dy) / H, w: geste.w / W };
+    } else {
+      const w = Math.min(Math.max(geste.w + Math.max(dx, dy * 1.2), 110), W - geste.l);
+      chantier.tInset = { x: geste.l / W, y: geste.t / H, w: w / W };
+    }
+    updateTInset(chantier);
+  });
+  const fin = (e) => {
+    if (!geste || e.pointerId !== geste.id) return;
+    geste = null;
+    box.classList.remove('dragging');
+    opt.onChange();
+  };
+  box.addEventListener('pointerup', fin);
+  box.addEventListener('pointercancel', fin);
+  root.querySelector('#f-inset-side').addEventListener('click', (e) => {
+    e.stopPropagation();
+    chantier.tInsetSide = !chantier.tInsetSide;
+    updateTInset(chantier);
+    opt.onChange();
+  });
+
+  root.querySelector('#f-inset-reset').addEventListener('click', (e) => {
+    e.stopPropagation();
+    delete chantier.tInset;
+    updateTInset(chantier);
+    opt.onChange();
+  });
+}
+
+/** Texte du cartouche : distance (par la route si le chemin d'accès est dessiné), lieu, coordonnées. */
+function tTexte(chantier, T, depart) {
+  const acces = chantier.symbols.find((s) => s.kind === 'acces_t' && s.pts?.length > 1);
+  let dist = depart.distanceTo([T.lat, T.lng]);
+  if (acces) {
+    dist = 0;
+    for (let i = 1; i < acces.pts.length; i++) dist += L.latLng(acces.pts[i - 1]).distanceTo(acces.pts[i]);
+  }
+  const dir = DIRS[Math.round(bearing(depart, [T.lat, T.lng]) / 45) % 8];
+  return {
+    acces,
+    titre: `Point T à ${fmtDist(dist)} ${acces ? 'par la route' : `au ${dir}`}`,
+    lieu: (chantier.info.localite_t || T.place || '').split(' – ')[0],
+    coords: formatLV95(T.lat, T.lng).replace(', ', ' / '),
+  };
+}
+
+/** Affiche le cartouche quand le point T est en dehors du plan affiché. */
+function updateTInset(chantier) {
+  const wrap = ficheMap?.getContainer().closest('.f-mapwrap');
+  if (!wrap) return;
+  const box = wrap.querySelector('#f-inset');
+  const T = chantier.symbols.find((s) => s.kind === 'point_t');
+  const pts = T ? chantierSansT(chantier, T) : [];
+  const vue = ficheMap.getBounds();
+  const marge = vue.pad(-0.03);
+  if (!T || !pts.length || marge.contains([T.lat, T.lng])) {
+    box.hidden = true;
+    wrap.classList.remove('inset-tl', 'inset-tr', 'inset-bl', 'inset-br');
+    return;
+  }
+
+  const el = ficheMap.getContainer();
+  const ox = el.offsetLeft;
+  const oy = el.offsetTop;
+  const px = (ll) => {
+    const q = ficheMap.latLngToContainerPoint(L.latLng(ll));
+    return [q.x + ox, q.y + oy];
+  };
+  const cb = L.latLngBounds(pts);
+  const heli = chantier.symbols.find((s) => s.kind === 'heli');
+  const depart = heli ? L.latLng(heli.lat, heli.lng) : cb.getCenter();
+  const c = px(depart);
+  const t = px([T.lat, T.lng]);
+  const d = [t[0] - c[0], t[1] - c[1]];
+
+  // Coin du cartouche : du côté du point T (ou la place choisie à la main)
+  const coin = `${d[1] < 0 ? 't' : 'b'}${d[0] < 0 ? 'l' : 'r'}`;
+  wrap.classList.remove('inset-tl', 'inset-tr', 'inset-bl', 'inset-br');
+  wrap.classList.add(`inset-${coin}`);
+  box.hidden = false;
+  box.classList.toggle('side', !!chantier.tInsetSide);
+  placeInset(wrap, box, chantier.tInset);
+
+  const { acces, titre, lieu, coords } = tTexte(chantier, T, depart);
+  wrap.querySelector('#f-inset-cap').innerHTML = `<strong>${esc(titre)}</strong><br>${lieu ? `${esc(lieu)}<br>` : ''}<span>${esc(coords)}</span>`;
+
+  // Petite carte zoomée sur le point T
+  const im = wrap.querySelector('#fiche-inset-map');
+  if (!insetMap) {
+    insetMap = L.map(im, {
+      zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false,
+      doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false, tap: false,
+    });
+    ficheOpt.makeBaseLayer().addTo(insetMap);
+    if (chantier.parcel) L.polygon(chantier.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(insetMap);
+  }
+  if (insetMap._acces) insetMap._acces.remove();
+  insetMap._acces = acces ? symbolLayer(acces, { interactive: false })?.addTo(insetMap) : null;
+  insetMap.eachLayer((l) => { if (l.options?.tMarker) l.remove(); });
+  L.marker([T.lat, T.lng], {
+    icon: L.divIcon({ className: 'sym', html: symbolSvg('point_t', 26), iconSize: [26, 26], iconAnchor: [13, 13] }),
+    interactive: false, tMarker: true,
+  }).addTo(insetMap);
+  insetMap.invalidateSize({ animate: false, pan: false });
+  insetMap.setView([T.lat, T.lng], 16, { animate: false });
+
 }
 
 /** Attend que les fonds de carte de la fiche soient chargés (max. 8 s). */
-function tilesLoaded() {
+function tilesLoaded(map = ficheMap) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     const check = () => {
       let loading = false;
-      ficheMap?.eachLayer((l) => { if (l.isLoading?.()) loading = true; });
+      map?.eachLayer((l) => { if (l.isLoading?.()) loading = true; });
       if (!loading || Date.now() - t0 > 8000) setTimeout(resolve, 250);
       else setTimeout(check, 200);
     };
     setTimeout(check, 300);
   });
+}
+
+/**
+ * Image du plan : si le point T est hors du plan, ajoute le cartouche comme sur la fiche
+ * (même place et même taille, en proportion ; carte zoomée sur T avec le chemin d'accès).
+ */
+async function dessinerCartouche(plan, chantier) {
+  const T = chantier.symbols.find((s) => s.kind === 'point_t');
+  const pts = T ? chantierSansT(chantier, T) : [];
+  if (!T || !pts.length || ficheMap.getBounds().pad(-0.03).contains([T.lat, T.lng])) return;
+  const k = 2;
+  const { canvas, width: W, height: H } = plan;
+  const ctx = canvas.getContext('2d');
+  const heli = chantier.symbols.find((s) => s.kind === 'heli');
+  const depart = heli ? L.latLng(heli.lat, heli.lng) : L.latLngBounds(pts).getCenter();
+  const { acces, titre, lieu, coords } = tTexte(chantier, T, depart);
+  const side = !!chantier.tInsetSide;
+
+  // Taille et place (comme à l'impression : 72 mm ou 110 mm sur 194 mm de large)
+  const pos = chantier.tInset;
+  // l'image est plus large que le plan imprimé (194 × 214 mm) : on garde la même taille relative à la hauteur
+  const echelle = Math.min(1, (H / W) / (214 / 194));
+  const w = Math.round(pos ? Math.min(Math.max(pos.w * W * echelle, 220), W - 16) : (W * (side ? 110 : 72) * echelle) / 194);
+  const mapW = Math.round(side ? w * 0.52 : w);
+  const mapH = Math.round((mapW * 3) / 4);
+  const lignes = [[titre, true, '#0d5f8f'], ...(lieu ? [[lieu, false, '#111']] : []), [coords, true, '#0d5f8f']];
+  const capW = side ? w - mapW : w;
+  // texte coupé en lignes selon la largeur
+  ctx.font = `${11 * k}px Arial, sans-serif`;
+  const wrapTxt = (t, bold) => {
+    ctx.font = `${bold ? 700 : 400} ${11 * k}px Arial, sans-serif`;
+    const out = [];
+    let cur = '';
+    for (const mot of t.split(' ')) {
+      const essai = cur ? `${cur} ${mot}` : mot;
+      if (ctx.measureText(essai).width > capW - 12 * k && cur) {
+        out.push(cur);
+        cur = mot;
+      } else cur = essai;
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+  const rows = lignes.flatMap(([t, b, col]) => wrapTxt(t, b).map((x) => [x, b, col]));
+  const lh = 14 * k;
+  const capH = side ? mapH : rows.length * lh + 8 * k;
+  const h = side ? mapH : mapH + capH;
+  let x;
+  let y;
+  if (pos) {
+    x = Math.min(Math.max(pos.x * W, 0), W - w);
+    y = Math.min(Math.max(pos.y * H, 0), H - h);
+  } else {
+    const ll = ficheMap.latLngToContainerPoint(depart);
+    const tt = ficheMap.latLngToContainerPoint(L.latLng(T.lat, T.lng));
+    const droite = tt.x >= ll.x;
+    const haut = tt.y < ll.y;
+    x = droite ? W - w - 8 * k : 8 * k;
+    y = haut ? 12 * k : H - h - (droite ? 22 : 58) * k;
+  }
+
+  // Petite carte zoomée sur le point T (dessinée à part, puis collée)
+  const div = document.createElement('div');
+  div.setAttribute('style', `position:fixed;left:0;top:0;width:${mapW}px;height:${mapH}px;z-index:-2;`);
+  document.body.appendChild(div);
+  const m = L.map(div, { zoomControl: false, attributionControl: false, fadeAnimation: false, zoomAnimation: false });
+  try {
+    ficheOpt.makeBaseLayer().addTo(m);
+    m.setView([T.lat, T.lng], 17, { animate: false });
+    await tilesLoaded(m);
+    const sous = { parcel: chantier.parcel, symbols: [T, ...(acces ? [acces] : [])] };
+    const img = await renderPlan(m, sous, k, { coordLabels: false, decor: false });
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.35)';
+    ctx.shadowBlur = 6 * k;
+    ctx.shadowOffsetY = 2 * k;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    ctx.drawImage(img.canvas, x, y, mapW, mapH);
+  } finally {
+    m.remove();
+    div.remove();
+  }
+  // Texte
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const cx = side ? x + mapW : x;
+  const cy0 = side ? y + (h - rows.length * lh) / 2 : y + mapH + 4 * k;
+  rows.forEach(([t, b, col], i) => {
+    ctx.font = `${b ? 700 : 400} ${11 * k}px Arial, sans-serif`;
+    ctx.fillStyle = col;
+    ctx.fillText(t, cx + 6 * k, cy0 + (i + 1) * lh - 3 * k);
+  });
+  // Cadres
+  ctx.strokeStyle = '#1a8fd0';
+  ctx.lineWidth = 1.5 * k;
+  ctx.beginPath();
+  if (side) {
+    ctx.moveTo(x + mapW, y);
+    ctx.lineTo(x + mapW, y + h);
+  } else {
+    ctx.moveTo(x, y + mapH);
+    ctx.lineTo(x + w, y + mapH);
+  }
+  ctx.stroke();
+  ctx.lineWidth = 2.5 * k;
+  ctx.strokeRect(x, y, w, h);
 }
 
 /** Image du plan : la carte est agrandie le temps de la copie pour obtenir une image nette. */
@@ -480,7 +794,9 @@ async function capturePlan(root, chantier) {
   try {
     fitFicheMap(chantier);
     await tilesLoaded();
-    return await renderPlan(ficheMap, chantier, 2);
+    const plan = await renderPlan(ficheMap, chantier, 2);
+    await dessinerCartouche(plan, chantier);
+    return { bytes: await canvasBytes(plan.canvas), width: plan.width, height: plan.height };
   } finally {
     el.setAttribute('style', old);
     root.classList.remove('capture-plan');
@@ -566,6 +882,8 @@ function updateRatio() {
 
 export function closeFicheMap() {
   stopDictee();
+  if (insetMap) insetMap.remove();
+  insetMap = null;
   if (ficheMap) ficheMap.remove();
   ficheMap = null;
 }

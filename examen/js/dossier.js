@@ -57,6 +57,14 @@ export async function dossierWord(chantier, plan, qrUrl) {
   const periode = [dateCH(info.date), dateCH(info.date_fin)].filter(Boolean).join(' au ');
   const dangers = new Set(Array.isArray(info.dangers_coches) ? info.dangers_coches : []);
   const n = (k) => sym(k).length;
+  // Chemin d'accès au point T dessiné sur le plan
+  const acces = sym('acces_t').find((s) => s.pts?.length > 1);
+  let accesTxt = '';
+  if (acces) {
+    let d = 0;
+    for (let i = 1; i < acces.pts.length; i++) d += L.latLng(acces.pts[i - 1]).distanceTo(acces.pts[i]);
+    accesTxt = `Accès : ${d >= 1000 ? `${(d / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(d)} m`} par la route (voir plan)`;
+  }
 
   const images = [];
   let imgId = 1;
@@ -79,7 +87,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     ['Propriétaire de la forêt', ''],
     ['Mandant', ''],
     ['Commune / lieu-dit', info.lieu_h || H?.place || ''],
-    ['Coordonnées (LV95)', cH.lv95 ? `${cH.lv95}${cH.alt ? ` · alt. ${cH.alt}` : ''}` : ''],
+    ['Coordonnées (MN95)', cH.lv95 ? `${cH.lv95}${cH.alt ? ` · alt. ${cH.alt}` : ''}` : ''],
     ['Surface de la parcelle', surface],
     ['Période des travaux', periode],
     ['Responsable du chantier', [info.responsable, info.resp_role, info.resp_tel].filter(Boolean).join(' – ')],
@@ -185,7 +193,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     ['Combien ? (volume)', info.volume || ''],
     ['Dangers particuliers', [...dangers].join(', ')],
     ['Mesures de sécurité', info.mesures || ''],
-    ['Organisation des secours', [`144 / Rega 1414`, cH.lv95 && `Point H : ${cH.lv95}`, cT.lv95 && `Point T : ${cT.lv95}`, info.hopital].filter(Boolean).join('\n')],
+    ['Organisation des secours', [`144 / Rega 1414`, cH.lv95 && `Point H (MN95) : ${cH.lv95}`, cT.lv95 && `Point T (MN95) : ${cT.lv95}`, accesTxt, info.hopital].filter(Boolean).join('\n')],
   ], { widths: [28, 72], minHeight: 520, firstColFill: 'F6ECE2' }));
   B.push(h2('Répartition des tâches'));
   const eq = lignes(info.equipe).map(personne);
@@ -267,9 +275,9 @@ export async function dossierWord(chantier, plan, qrUrl) {
     ['Responsable du chantier', [info.responsable, info.resp_tel].filter(Boolean).join(' – ')],
   ], { widths: [35, 65], firstColFill: 'F6ECE2' }));
   B.push(table([
-    ['Point de sauvetage', 'Lieu', 'Coordonnées LV95', 'WGS84 / altitude'],
+    ['Point de sauvetage', 'Lieu', 'Coordonnées MN95', 'WGS84 / altitude'],
     ['H – sauvetage aérien', info.lieu_h || H?.place || '', cH.lv95, [cH.wgs, cH.alt].filter(Boolean).join('\n')],
-    ['T – sauvetage terrestre (rencontre ambulance)', info.localite_t || T?.place || '', cT.lv95, [cT.wgs, cT.alt].filter(Boolean).join('\n')],
+    ['T – sauvetage terrestre (rencontre ambulance)', [info.localite_t || T?.place || '', accesTxt].filter(Boolean).join('\n'), cT.lv95, [cT.wgs, cT.alt].filter(Boolean).join('\n')],
     ['Véhicule et pharmacie', n('vehicule') ? 'voir plan' : '', '', ''],
   ], { widths: [26, 26, 22, 26], minHeight: 480, firstColFill: 'F6ECE2' }));
   B.push(h2('Annonce d\'une urgence'));

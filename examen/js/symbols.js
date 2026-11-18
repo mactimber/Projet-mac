@@ -55,6 +55,7 @@ export const SYMBOLS = [
   { kind: 'heli', group: 'Secours', label: 'Sauvetage hélico (H)', mode: 'point', unique: true, coordLabel: true, hint: 'Touchez la place pour le sauvetage hélicoptère.' },
   { kind: 'point_t', group: 'Secours', label: 'Sauvetage terrestre (T)', mode: 'point', unique: true, coordLabel: true, hint: 'Touchez le point de rencontre avec l\'ambulance.' },
   { kind: 'vehicule', group: 'Secours', label: 'Véhicule + pharmacie', mode: 'point', hint: 'Touchez l\'emplacement du véhicule et de la pharmacie.' },
+  { kind: 'acces_t', group: 'Secours', label: 'Accès au point T (route)', mode: 'line', color: '#1a8fd0', outline: '#fff', weight: 4, dash: '10 7', arrowEnd: true, midArrows: true, hint: 'Suivez la route du chantier jusqu\'au point T (dézoomez si besoin), puis « Terminer ».' },
   { kind: 'helico', group: 'Secours', label: 'Hélicoptère', mode: 'point', hint: 'Touchez la place de l\'hélicoptère.' },
   // --- Coupe
   { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis la direction de chute.' },
@@ -85,7 +86,7 @@ function lineIcon(def) {
   const d = 'M5 33L35 7';
   let s = '';
   if (def.outline) s += `<path d="${d}" stroke="${def.outline}" stroke-width="${def.weight + 3}" stroke-linecap="round"/>`;
-  s += `<path d="${d}" stroke="${def.color}" stroke-width="${def.weight}" stroke-linecap="round"/>`;
+  s += `<path d="${d}" stroke="${def.color}" stroke-width="${def.weight}" stroke-linecap="round"${def.dash ? ' stroke-dasharray="6 4"' : ''}/>`;
   if (def.arrowEnd) s += `<path d="M38 4l-11 3.5 7.5 7.5z" fill="${def.color}"/>`;
   if (def.arrowStart) s += `<path d="M2 36l11-3.5-7.5-7.5z" fill="${def.color}"/>`;
   if (def.kind === 'electrique') s += '<path d="M20 11l-5 9h4l-2 7 7-10h-4.5z" fill="#ffd600" stroke="#111" stroke-width="1"/>';

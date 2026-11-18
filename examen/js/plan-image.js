@@ -37,9 +37,10 @@ export async function canvasBytes(canvas) {
  * @param {L.Map} map carte déjà cadrée, fonds chargés
  * @param {object} chantier
  * @param {number} k facteur de taille des symboles (1 = comme à l'écran)
- * @returns {Promise<{bytes:Uint8Array,width:number,height:number}>}
+ * @param {object} opts { coordLabels: false = sans étiquette de coordonnées, decor: false = sans nord ni échelle }
+ * @returns {Promise<{canvas:HTMLCanvasElement,width:number,height:number}>}
  */
-export async function renderPlan(map, chantier, k = 2) {
+export async function renderPlan(map, chantier, k = 2, opts = {}) {
   const box = map.getContainer().getBoundingClientRect();
   const W = Math.round(box.width);
   const H = Math.round(box.height);
@@ -205,8 +206,16 @@ export async function renderPlan(map, chantier, k = 2) {
       path(pts);
       ctx.strokeStyle = def.color;
       ctx.lineWidth = def.weight * k;
+      if (def.dash) ctx.setLineDash(def.dash.split(' ').map((v) => Number(v) * k));
       ctx.stroke();
+      ctx.setLineDash([]);
       const n = pts.length;
+      if (def.midArrows) {
+        for (let i = 1; i < n; i++) {
+          const m = [(pts[i - 1][0] + pts[i][0]) / 2, (pts[i - 1][1] + pts[i][1]) / 2];
+          await head(m, bearingPx(pts[i - 1], pts[i]), def.color, 16 * k);
+        }
+      }
       const hs = (def.kind === 'distance' ? 16 : 20) * k;
       if (def.arrowEnd) await head(pts[n - 1], bearingPx(pts[n - 2], pts[n - 1]), def.color, hs);
       if (def.arrowStart) await head(pts[0], bearingPx(pts[1], pts[0]), def.color, hs);
@@ -279,7 +288,7 @@ export async function renderPlan(map, chantier, k = 2) {
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
     shadow(false);
     const lx = x + w / 2 + 3 * k;
-    if (def.coordLabel) {
+    if (def.coordLabel && opts.coordLabels !== false) {
       const txt = formatLV95(s.lat, s.lng).replace(', ', ' / ');
       const st = s.kind === 'heli'
         ? { bg: '#111', fg: '#ff3b30', border: '#111', bw: 1.5 }
@@ -291,6 +300,8 @@ export async function renderPlan(map, chantier, k = 2) {
   }
   shadow(false);
   labels.forEach((f) => f());
+
+  if (opts.decor === false) return { canvas: c, width: W, height: H };
 
   // 3. Nord + échelle graphique
   const north = await svgImg('<svg xmlns="http://www.w3.org/2000/svg" width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg>');
@@ -323,5 +334,5 @@ export async function renderPlan(map, chantier, k = 2) {
   ctx.fillStyle = '#333';
   ctx.fillText(attr, W - 4 * k, H - 4 * k);
 
-  return { bytes: await canvasBytes(c), width: W, height: H };
+  return { canvas: c, width: W, height: H };
 }

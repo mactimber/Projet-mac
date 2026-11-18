@@ -170,8 +170,16 @@ export function symbolLayer(s, opt = {}) {
   const pts = s.pts || [];
   if (pts.length < 2) return null;
   if (def.outline) L.polyline(pts, { color: def.outline, weight: (def.weight + 3) * scale, interactive: inter, lineCap: 'round', lineJoin: 'round' }).addTo(g);
-  L.polyline(pts, { color: def.color, weight: def.weight * scale, interactive: inter, lineCap: 'round', lineJoin: 'round' }).addTo(g);
+  L.polyline(pts, { color: def.color, weight: def.weight * scale, interactive: inter, lineCap: 'round', lineJoin: 'round', dashArray: def.dash }).addTo(g);
   const n = pts.length;
+  if (def.midArrows) {
+    // petites flèches au milieu des tronçons, pour lire le sens du trajet
+    for (let i = 1; i < n; i++) {
+      const a = L.latLng(pts[i - 1]);
+      const b = L.latLng(pts[i]);
+      headMarker(L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2), bearing(a, b), def.color, Math.round(16 * scale), inter).addTo(g);
+    }
+  }
   const hs = Math.round((def.kind === 'distance' ? 16 : 20) * scale);
   if (def.arrowEnd) headMarker(pts[n - 1], bearing(pts[n - 2], pts[n - 1]), def.color, hs, inter).addTo(g);
   if (def.arrowStart) headMarker(pts[0], bearing(pts[1], pts[0]), def.color, hs, inter).addTo(g);
