@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne + cache des tuiles cartographiques.
 
-const APP_CACHE = 'e17-app-v3';
+const APP_CACHE = 'e17-app-v4';
 const TILE_CACHE = 'e17-tiles-v1';
 const MAX_RUNTIME_TILES = 6000;
 

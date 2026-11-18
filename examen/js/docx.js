@@ -145,7 +145,7 @@ export function table(rows, o = {}) {
       const fill = c.fill || (isHead ? (o.headFill || 'E9DCCB') : (o.firstColFill && col === span ? o.firstColFill : ''));
       const tcpr = `<w:tcW w:w="${w}" w:type="dxa"/>${span > 1 ? `<w:gridSpan w:val="${span}"/>` : ''}${fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>` : ''}${o.vAlign ? `<w:vAlign w:val="${o.vAlign}"/>` : ''}`;
       const paras = Array.isArray(c.text) ? c.text : [c.text ?? ''];
-      const content = paras.map((t) => (String(t).startsWith('<w:p') ? t : p([[t, { bold: c.bold || isHead, size: o.size || 10, color: c.color, italic: c.italic }]], { spaceBefore: 30, spaceAfter: 30, align: c.align || o.align || 'left', keepNext: o.keep && ri < rows.length - 1 }))).join('');
+      const content = paras.map((t) => (String(t).startsWith('<w:p') ? t : p([[t, { bold: c.bold || isHead, size: o.size || 10, color: c.color || (isHead ? o.headColor : undefined), italic: c.italic }]], { spaceBefore: 30, spaceAfter: 30, align: c.align || o.align || 'left', keepNext: o.keep && ri < rows.length - 1 }))).join('');
       return `<w:tc><w:tcPr>${tcpr}</w:tcPr>${content}</w:tc>`;
     }).join('');
     const empty = r.every((cell) => !(typeof cell === 'object' && cell ? cell.text : cell)) || (ri > 0 && r.slice(1).every((cell) => !(typeof cell === 'object' && cell ? cell.text : cell)));
@@ -162,6 +162,13 @@ export function image(rId, id, wCm, hCm, name = 'image') {
   const cx = Math.round(wCm * 360000);
   const cy = Math.round(hCm * 360000);
   return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="${x(name)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="${x(name)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+}
+
+/** Image placée derrière le texte, centrée sur la page ; décalage vertical (cm) par rapport au paragraphe qui la porte. */
+export function imageBehind(rId, id, wCm, hCm, offsetCm, name = 'image') {
+  const cx = Math.round(wCm * 360000);
+  const cy = Math.round(hCm * 360000);
+  return `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="0" layoutInCell="0" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:align>center</wp:align></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>${Math.round(offsetCm * 360000)}</wp:posOffset></wp:positionV><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${id}" name="${x(name)}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="${x(name)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
 }
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';

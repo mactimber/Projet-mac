@@ -4,7 +4,7 @@
 
 import { SYMBOLS, symbolSvg, symbolArt } from './symbols.js';
 import { wgs84ToLV95 } from './swiss.js';
-import { buildDocx, p, h1, h2, table, image, field } from './docx.js';
+import { buildDocx, p, h1, h2, table, image, imageBehind, field } from './docx.js';
 import { svgToPng } from './plan-image.js';
 import { qrSvg } from './share.js';
 
@@ -64,25 +64,23 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="fr-CH"/></w:rPr></w:rPrDefault>
 <w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:jc w:val="both"/></w:pPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:spacing w:before="480" w:after="200"/><w:ind w:left="794" w:hanging="794"/><w:jc w:val="left"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:color w:val="000000"/><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr><w:spacing w:before="320" w:after="160"/><w:ind w:left="709" w:hanging="709"/><w:jc w:val="left"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:color w:val="000000"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="TitreTDM"><w:name w:val="Titre table des matières"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:spacing w:before="0" w:after="360"/><w:jc w:val="center"/></w:pPr><w:rPr><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="TOC1"><w:name w:val="toc 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:pPr><w:tabs><w:tab w:val="left" w:pos="567"/><w:tab w:val="right" w:leader="dot" w:pos="9060"/></w:tabs><w:spacing w:before="120" w:after="60"/><w:jc w:val="left"/></w:pPr></w:style>
-<w:style w:type="paragraph" w:styleId="TOC2"><w:name w:val="toc 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:pPr><w:tabs><w:tab w:val="left" w:pos="1276"/><w:tab w:val="right" w:leader="dot" w:pos="9060"/></w:tabs><w:spacing w:before="0" w:after="40"/><w:ind w:left="567"/><w:jc w:val="left"/></w:pPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="480" w:after="240"/><w:jc w:val="left"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:color w:val="000000"/><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="360" w:after="200"/><w:jc w:val="left"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:color w:val="000000"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="TitreTDM"><w:name w:val="Titre table des matières"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:spacing w:before="0" w:after="360"/><w:jc w:val="center"/></w:pPr><w:rPr><w:b/><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="TOC1"><w:name w:val="toc 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:pPr><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="9060"/></w:tabs><w:spacing w:before="0" w:after="100"/><w:jc w:val="left"/></w:pPr><w:rPr><w:b/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="TOC2"><w:name w:val="toc 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:pPr><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="9060"/></w:tabs><w:spacing w:before="0" w:after="100"/><w:ind w:left="198"/><w:jc w:val="left"/></w:pPr></w:style>
 <w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/><w:jc w:val="center"/></w:pPr></w:style>
-<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/><w:jc w:val="left"/></w:pPr><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/><w:jc w:val="left"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
 <w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="000000"/></w:rPr></w:style>
 </w:styles>`;
 
-/* Numérotation : 1 = titres (1. / 1.1), 2 = puces, 3 et 4 = listes 1. 2. 3. */
+/* Numérotation : 2 = puces, 3 et 4 = listes 1. 2. 3. (les numéros des titres sont écrits dans le titre, comme le D9) */
 const lvl = (i, fmtNum, text, ind, hang, extra = '') => `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="${fmtNum}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${ind}" w:hanging="${hang}"/></w:pPr>${extra}</w:lvl>`;
 const NUMBERING = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="multilevel"/>${lvl(0, 'decimal', '%1.', 794, 794)}${lvl(1, 'decimal', '%1.%2', 709, 709)}</w:abstractNum>
-<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/>${lvl(0, 'bullet', '–', 425, 283)}</w:abstractNum>
+<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/>${lvl(0, 'bullet', '•', 720, 360)}</w:abstractNum>
 <w:abstractNum w:abstractNumId="2"><w:multiLevelType w:val="singleLevel"/>${lvl(0, 'decimal', '%1.', 425, 425)}</w:abstractNum>
 <w:abstractNum w:abstractNumId="3"><w:multiLevelType w:val="singleLevel"/>${lvl(0, 'decimal', '%1.', 425, 425)}</w:abstractNum>
-<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
 <w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
 <w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num>
 <w:num w:numId="4"><w:abstractNumId w:val="3"/></w:num>
@@ -137,7 +135,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
   const imgPart = (im, rId, wCm, id, name) => (im ? { run: image(rId, id, wCm, (wCm * im.h) / im.w, name), images: [{ rId, bytes: im.bytes, ext: im.ext }] } : { run: '', images: [] });
 
   /* En-têtes et pieds de page */
-  const logoP = imgPart(logo, 'rIdLogo', 3.5, 9001, 'Logo');
+  const logoP = imgPart(logo, 'rIdLogo', 3, 9001, 'Logo');
   const firstHeader = {
     xml: table([[
       { text: [p([['Test compétence E17', { bold: true, size: 16, color: VERT }]], { align: 'left', spaceAfter: 0 })] },
@@ -150,20 +148,23 @@ export async function dossierWord(chantier, plan, qrUrl) {
       { text: ['Module E17', 'Centre de formation professionnelle forestière', 'Le Mont-sur-Lausanne'] },
       { text: date, align: 'center' },
       { text: info.responsable || '', align: 'right' },
-    ]], { widths: [46, 20, 34], header: false, borders: false, after: false, size: 10, vAlign: 'bottom' }) + '<w:p/>',
+    ]], { widths: [56, 20, 24], header: false, borders: false, after: false, size: 11, vAlign: 'bottom' }) + '<w:p/>',
   };
   const enteteP = imgPart(entete, 'rIdEntete', 7, 9002, 'En-tête');
-  const header = { xml: `<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr>${enteteP.run}</w:p>`, images: enteteP.images };
-  const piedP = imgPart(pied, 'rIdPied', 7, 9003, 'Pied de page');
-  const pageNo = `<w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">Page | </w:t></w:r>${field('PAGE', '1', '<w:rPr><w:sz w:val="18"/></w:rPr>')}</w:p>`;
+  const header = { xml: `<w:p><w:pPr><w:pStyle w:val="Header"/><w:spacing w:after="240"/></w:pPr>${enteteP.run}</w:p>`, images: enteteP.images };
+  // Pied de page : texte posé sur l'arc d'arbres (image derrière le texte, en bas de page), comme le D9
+  const piedW = 7;
+  const piedH = pied ? (piedW * pied.h) / pied.w : 0;
+  const piedRun = pied ? imageBehind('rIdPied', 9003, piedW, piedH, -1.1, 'Pied de page') : '';
+  const RP = '<w:rPr><w:sz w:val="20"/></w:rPr>';
+  const pageNo = `<w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="right"/></w:pPr><w:r>${RP}<w:t xml:space="preserve">Page | </w:t></w:r>${field('PAGE', '1', RP)}</w:p>`;
   const footer = {
-    xml: (piedP.run ? `<w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr>${piedP.run}</w:p>` : '')
-      + table([[
-        { text: ['Test de compétence', 'Module E17'] },
-        { text: date, align: 'center' },
-        { text: [pageNo] },
-      ]], { widths: [40, 20, 40], header: false, borders: false, after: false, size: 9, vAlign: 'center' }) + '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>',
-    images: piedP.images,
+    xml: `<w:p><w:pPr><w:pStyle w:val="Footer"/><w:spacing w:line="20" w:lineRule="exact"/></w:pPr>${piedRun}</w:p>` + table([[
+      { text: [`<w:p><w:pPr><w:pStyle w:val="Footer"/></w:pPr><w:r>${RP}<w:t>Test de compétence</w:t></w:r></w:p>`, 'Module E17'] },
+      { text: [`<w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr><w:r>${RP}<w:t>${date}</w:t></w:r></w:p>`] },
+      { text: [pageNo] },
+    ]], { widths: [40, 20, 40], header: false, borders: false, after: false, size: 10, vAlign: 'top' }) + '<w:p><w:pPr><w:pStyle w:val="Footer"/><w:spacing w:line="20" w:lineRule="exact"/></w:pPr></w:p>',
+    images: pied ? [{ rId: 'rIdPied', bytes: pied.bytes, ext: pied.ext }] : [],
   };
 
   /* Corps */
@@ -172,25 +173,22 @@ export async function dossierWord(chantier, plan, qrUrl) {
   let n1 = 0;
   let n2 = 0;
   const T1 = (t, o = {}) => {
-    if (o.noNum) titres.push([1, '', t]);
-    else {
-      n1 += 1;
-      n2 = 0;
-      titres.push([1, `${n1}.`, t]);
-    }
-    B.push(h1(t, o));
+    n1 += 1;
+    n2 = 0;
+    titres.push([1, `${n1}. ${t}`]);
+    B.push(h1(`${n1}. ${t}`, o));
   };
   const T2 = (t) => {
     n2 += 1;
-    titres.push([2, `${n1}.${n2}`, t]);
-    B.push(h2(t));
+    titres.push([2, `${n1}.${n2} ${t}`]);
+    B.push(h2(`${n1}.${n2} ${t}`));
   };
 
   /* Page de garde */
-  B.push(p([['Dossier de coupe', { bold: true, size: 36, color: VERT }]], { align: 'center', spaceBefore: 3400, spaceAfter: 120 }));
-  B.push(p([[nom, { bold: true, size: 36, color: VERT }]], { align: 'center', spaceAfter: 1400 }));
-  B.push(p([[info.citation || '« Citation à choisir »', { italic: true, size: 12 }]], { align: 'center', spaceAfter: 60 }));
-  B.push(p([[info.citation_auteur || 'Auteur', { size: 10, color: '595959' }]], { align: 'center' }));
+  B.push(p([['Dossier de coupe', { bold: true, size: 36, color: VERT }]], { align: 'center', spaceBefore: 2600, spaceAfter: 0 }));
+  B.push(p([[nom, { bold: true, size: 36, color: VERT }]], { align: 'center', spaceAfter: 2400 }));
+  B.push(p([[info.citation || '« Citation à choisir »', { italic: true, size: 16 }]], { align: 'center', spaceAfter: 360 }));
+  B.push(p([[info.citation_auteur || 'Auteur', { size: 11 }]], { align: 'center' }));
 
   /* Table des matières (champ Word, pré-rempli) : construite à la fin */
   const TDM = '@@TDM@@';
@@ -199,7 +197,6 @@ export async function dossierWord(chantier, plan, qrUrl) {
   B.push(NOTE('Pour mettre à jour les numéros de page : clic droit sur la table des matières → « Mettre à jour les champs » (ou touche F9).'));
 
   /* Introduction */
-  T1('Introduction', { noNum: true, pageBreakBefore: true });
   const contraintes = [
     route && 'la route et le trafic (fermeture et signalisation)',
     ligneElec && 'une ligne électrique',
@@ -207,7 +204,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     dangers.includes('Chute de pierres') && 'les chutes de pierres',
     dangers.includes('Pente raide') && 'la pente raide',
   ].filter(Boolean);
-  B.push(T(
+  B.push(p([
     `Le chantier « ${nom} » se situe sur la commune de `, commune ? commune : PH('commune'),
     ', au lieu-dit ', lieuDit ? lieuDit : PH('lieu-dit'), '. ',
     'Les travaux prévus sont : ', info.travaux ? info.travaux.replace(/\.$/, '') : PH('travaux prévus'), '. ',
@@ -216,7 +213,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     'Les contraintes principales sont ', contraintes.length ? contraintes.join(', ') : '', contraintes.length ? ', ' : '', PH('habitations, route, autres contraintes'), '. ',
     'Zone de protection des eaux : ', PH('aucune / S1 / S2 / S3'), '. ',
     'En tant que contremaître, je suis responsable de la planification et de l\'organisation de ce chantier, de la sécurité de l\'équipe et des tiers, ainsi que de la coordination avec le mandant, les entreprises et les autorités.',
-  ));
+  ].map((x) => (Array.isArray(x) ? x : [x])), { pageBreakBefore: true }));
 
   /* 1. Méthodes de travail */
   T1('Méthodes de travail');
@@ -233,7 +230,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     ['Activité', 'Danger', 'Probabilité (++ / + / - / --)', 'Gravité (I à V)', 'Groupe (1-2-3)', 'Mesure (S-T-O-P)', 'Qui / Quand'],
     ...dangers.map((d) => ['', d, '', '', '', '', '']),
     ...Array.from({ length: Math.max(3, 6 - dangers.length) }, () => ['', '', '', '', '', '', '']),
-  ], { widths: [15, 18, 13, 10, 10, 20, 14], minHeight: 480, size: 9, headFill: 'DCE8D2' }));
+  ], { widths: [15, 18, 13, 10, 10, 20, 14], minHeight: 480, size: 9, headFill: VERT, headColor: 'FFFFFF', firstColFill: 'E2EFDA' }));
   B.push(NOTE('Groupe 1 = mesures immédiates. Mesures S-T-O-P : Substitution, Technique, Organisation, Personnel.'));
   if (dangers.length) B.push(NOTE('Les premières lignes reprennent les dangers cochés sur le terrain.'));
 
@@ -301,7 +298,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     ['Nom / entreprise', 'Fonction', 'Qualification (CFC, cours, permis)', 'Tâche'],
     ...pers.map(([nm, f]) => [nm, f || '', '', '']),
     ...Array.from({ length: 2 }, () => ['', '', '', '']),
-  ], { widths: [28, 20, 28, 24], minHeight: 440, size: 10, headFill: 'DCE8D2' }));
+  ], { widths: [28, 20, 28, 24], minHeight: 440, size: 10, headFill: VERT, headColor: 'FFFFFF', firstColFill: 'E2EFDA' }));
   B.push(VIDES(1));
 
   /* 6. Programme */
@@ -315,7 +312,7 @@ export async function dossierWord(chantier, plan, qrUrl) {
     ['J-5', 'Confirmation de l\'équipe et des machines, reconnaissance des accès et des points H et T', ''],
     [`J-0${info.date ? ` (${dateCH(info.date)})` : ''}`, 'Ordre de travail à l\'équipe, mise en place de la signalisation, début des travaux', info.responsable || ''],
     [`Fin de chantier${info.date_fin ? ` (${dateCH(info.date_fin)})` : ''}`, 'Enlèvement de la signalisation, nettoyage, contrôle et réception des travaux, décompte', info.responsable || ''],
-  ], { widths: [20, 58, 22], size: 10, headFill: 'DCE8D2' }));
+  ], { widths: [20, 58, 22], size: 10, headFill: VERT, headColor: 'FFFFFF', firstColFill: 'E2EFDA' }));
   B.push(VIDES(1));
 
   /* 7. Coordination */
@@ -411,18 +408,18 @@ export async function dossierWord(chantier, plan, qrUrl) {
   T2('Urgences et coordonnées');
   B.push(table([
     ['Service', 'Numéro / contact'],
-    ['Ambulance', '144'], ['Rega (hélicoptère)', '1414'], ['Police', '117'], ['Pompiers', '118'],
-    ['Urgence (international)', '112'], ['Tox Info Suisse', '145'],
+    ...[['Ambulance', '144'], ['Rega (hélicoptère)', '1414'], ['Police', '117'], ['Pompiers', '118'],
+      ['Urgence européenne', '112'], ['Tox Info Suisse', '145']].map(([a, b]) => [a, { text: b, bold: true, align: 'center' }]),
     ['Médecin de garde VD', info.medecin || 'Médecin de garde VD – 0848 133 133'],
     ['Hôpital', info.hopital || 'CHUV, Lausanne – 021 314 11 11'],
-  ], { widths: [35, 65], size: 10, headFill: 'DCE8D2', keep: true }));
+  ], { widths: [35, 65], size: 10, headFill: VERT, headColor: 'FFFFFF', firstColFill: 'E2EFDA', keep: true }));
 
   T2('Points de sauvetage H et T');
   B.push(table([
     ['Point', 'Lieu', 'Coordonnées MN95', 'Accès'],
-    ['H – sauvetage aérien', lieu, [cH.mn95, cH.alt && `alt. ${cH.alt}`].filter(Boolean).join('\n'), 'Hélicoptère (Rega 1414)'],
-    ['T – sauvetage terrestre', lieuT, [cT.mn95, cT.alt && `alt. ${cT.alt}`].filter(Boolean).join('\n'), accesTxt || ''],
-  ], { widths: [22, 28, 22, 28], size: 10, headFill: 'DCE8D2', minHeight: 480, keep: true }));
+    [{ text: 'Coordonnées H', bold: true, color: 'C00000' }, lieu, { text: [cH.mn95, cH.alt && `alt. ${cH.alt}`].filter(Boolean).join('\n'), color: 'C00000' }, 'Hélicoptère (Rega 1414)'],
+    [{ text: 'Point de rencontre T', bold: true, color: '1F4E9F' }, lieuT, { text: [cT.mn95, cT.alt && `alt. ${cT.alt}`].filter(Boolean).join('\n'), color: '1F4E9F' }, accesTxt || ''],
+  ], { widths: [22, 28, 22, 28], size: 10, headFill: VERT, headColor: 'FFFFFF', firstColFill: 'E2EFDA', minHeight: 480, keep: true }));
 
   T2('Annonce d\'une urgence');
   [
@@ -442,17 +439,17 @@ export async function dossierWord(chantier, plan, qrUrl) {
   B.push(Q('Résultat'), VIDES(2), Q('Comparaison avec les chiffres du cours'), VIDES(2), Q('Variante moins chère et mon choix'), VIDES(2));
 
   /* Table des matières : champ TOC, pré-rempli avec les titres (numéros de page à mettre à jour dans Word) */
-  const entree = ([niv, num, t], i, all) => {
+  const entree = ([niv, t], i, all) => {
     const debut = i === 0 ? `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-2" \\h \\z \\u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>` : '';
     const fin = i === all.length - 1 ? '<w:r><w:fldChar w:fldCharType="end"/></w:r>' : '';
-    return `<w:p><w:pPr><w:pStyle w:val="TOC${niv}"/></w:pPr>${debut}${num ? `<w:r><w:t xml:space="preserve">${num}</w:t></w:r><w:r><w:tab/></w:r>` : ''}<w:r><w:t xml:space="preserve">${t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</w:t></w:r>${fin}</w:p>`;
+    return `<w:p><w:pPr><w:pStyle w:val="TOC${niv}"/></w:pPr>${debut}<w:r><w:t xml:space="preserve">${t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</w:t></w:r>${fin}</w:p>`;
   };
   const body = B.join('').replace(TDM, titres.map(entree).join(''));
 
   return buildDocx({
     body, images, styles: STYLES, numbering: NUMBERING,
     header, footer, firstHeader, firstFooter,
-    margins: { top: 1418, right: 1418, bottom: 1134, left: 1418, header: 567, footer: 340 },
+    margins: { top: 1418, right: 1418, bottom: 1814, left: 1418, header: 680, footer: 567 }, // bas : 3,2 cm, pour que le texte s'arrête au-dessus de l'arc d'arbres (comme le D9)
     title: `Dossier de coupe – ${nom}`,
   });
 }
