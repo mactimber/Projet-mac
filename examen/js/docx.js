@@ -90,6 +90,8 @@ export function run(text, o = {}) {
 
 /**
  * Paragraphe. content : texte ou tableau de [texte, options] / runs déjà faits (chaîne commençant par « <w: »).
+ * o : style, align, spaceBefore, spaceAfter, keepNext, keepLines, pageBreakBefore, num: [numId, niveau],
+ *     noNum (titre sans numéro), tabs: [[type, pos], ...]
  */
 export function p(content, o = {}) {
   const runs = Array.isArray(content)
@@ -98,26 +100,39 @@ export function p(content, o = {}) {
   const ppr = [
     o.style ? `<w:pStyle w:val="${o.style}"/>` : '',
     o.keepNext ? '<w:keepNext/>' : '',
+    o.keepLines ? '<w:keepLines/>' : '',
     o.pageBreakBefore ? '<w:pageBreakBefore/>' : '',
+    o.num ? `<w:numPr><w:ilvl w:val="${o.num[1] || 0}"/><w:numId w:val="${o.num[0]}"/></w:numPr>` : '',
+    o.noNum ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr>' : '',
+    o.tabs ? `<w:tabs>${o.tabs.map(([t, pos, leader]) => `<w:tab w:val="${t}"${leader ? ` w:leader="${leader}"` : ''} w:pos="${pos}"/>`).join('')}</w:tabs>` : '',
     o.spaceBefore != null || o.spaceAfter != null ? `<w:spacing${o.spaceBefore != null ? ` w:before="${o.spaceBefore}"` : ''}${o.spaceAfter != null ? ` w:after="${o.spaceAfter}"` : ''}/>` : '',
+    o.ind ? `<w:ind w:left="${o.ind}"/>` : '',
     o.align ? `<w:jc w:val="${o.align}"/>` : '',
   ].join('');
   return `<w:p>${ppr ? `<w:pPr>${ppr}</w:pPr>` : ''}${runs}</w:p>`;
 }
 
 export const h1 = (t, o = {}) => p(t, { style: 'Heading1', ...o });
-export const h2 = (t) => p(t, { style: 'Heading2' });
+export const h2 = (t, o = {}) => p(t, { style: 'Heading2', ...o });
 export const pageBreak = () => '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+export const tab = () => '<w:r><w:tab/></w:r>';
+
+/** Champ Word (PAGE, NUMPAGES…) avec un texte provisoire. */
+export const field = (instr, placeholder = '1', rpr = '') => `<w:r>${rpr}<w:fldChar w:fldCharType="begin"/></w:r><w:r>${rpr}<w:instrText xml:space="preserve"> ${instr} </w:instrText></w:r><w:r>${rpr}<w:fldChar w:fldCharType="separate"/></w:r><w:r>${rpr}<w:t xml:space="preserve">${x(placeholder)}</w:t></w:r><w:r>${rpr}<w:fldChar w:fldCharType="end"/></w:r>`;
 
 /**
  * Tableau.
- * @param {Array<Array<string|{text,bold,fill,span}>>} rows
- * @param {object} o { widths: [en % de la largeur], header: true, minHeight: twips pour les lignes vides }
+ * @param {Array<Array<string|{text,bold,fill,span,align}>>} rows
+ * @param {object} o { widths: [en % de la largeur], total: largeur en twips, header: true, minHeight: twips,
+ *                     borders: false (sans bordures), headFill, size, vAlign }
  */
 export function table(rows, o = {}) {
-  const total = o.total || 9638;
+  const total = o.total || 9070;
   const widths = (o.widths || rows[0].map(() => 100 / rows[0].length)).map((w) => Math.round((w / 100) * total));
-  const border = '<w:top w:val="single" w:sz="6" w:color="7F7F7F"/><w:left w:val="single" w:sz="6" w:color="7F7F7F"/><w:bottom w:val="single" w:sz="6" w:color="7F7F7F"/><w:right w:val="single" w:sz="6" w:color="7F7F7F"/><w:insideH w:val="single" w:sz="4" w:color="A6A6A6"/><w:insideV w:val="single" w:sz="4" w:color="A6A6A6"/>';
+  const ligne = (sz, col) => `w:val="single" w:sz="${sz}" w:color="${col}"`;
+  const border = o.borders === false
+    ? '<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>'
+    : `<w:top ${ligne(6, '7F7F7F')}/><w:left ${ligne(6, '7F7F7F')}/><w:bottom ${ligne(6, '7F7F7F')}/><w:right ${ligne(6, '7F7F7F')}/><w:insideH ${ligne(4, 'A6A6A6')}/><w:insideV ${ligne(4, 'A6A6A6')}/>`;
   const grid = widths.map((w) => `<w:gridCol w:w="${w}"/>`).join('');
   const body = rows.map((r, ri) => {
     const isHead = o.header !== false && ri === 0;
@@ -128,16 +143,18 @@ export function table(rows, o = {}) {
       const w = widths.slice(col, col + span).reduce((a, b) => a + b, 0);
       col += span;
       const fill = c.fill || (isHead ? (o.headFill || 'E9DCCB') : (o.firstColFill && col === span ? o.firstColFill : ''));
-      const tcpr = `<w:tcW w:w="${w}" w:type="dxa"/>${span > 1 ? `<w:gridSpan w:val="${span}"/>` : ''}${fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>` : ''}`;
+      const tcpr = `<w:tcW w:w="${w}" w:type="dxa"/>${span > 1 ? `<w:gridSpan w:val="${span}"/>` : ''}${fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>` : ''}${o.vAlign ? `<w:vAlign w:val="${o.vAlign}"/>` : ''}`;
       const paras = Array.isArray(c.text) ? c.text : [c.text ?? ''];
-      const content = paras.map((t) => (String(t).startsWith('<w:p') ? t : p([[t, { bold: c.bold || isHead, size: o.size || 10, color: c.color, italic: c.italic }]], { spaceBefore: 30, spaceAfter: 30 }))).join('');
+      const content = paras.map((t) => (String(t).startsWith('<w:p') ? t : p([[t, { bold: c.bold || isHead, size: o.size || 10, color: c.color, italic: c.italic }]], { spaceBefore: 30, spaceAfter: 30, align: c.align || o.align || 'left', keepNext: o.keep && ri < rows.length - 1 }))).join('');
       return `<w:tc><w:tcPr>${tcpr}</w:tcPr>${content}</w:tc>`;
     }).join('');
     const empty = r.every((cell) => !(typeof cell === 'object' && cell ? cell.text : cell)) || (ri > 0 && r.slice(1).every((cell) => !(typeof cell === 'object' && cell ? cell.text : cell)));
-    const trpr = [isHead ? '<w:tblHeader/><w:cantSplit/>' : '<w:cantSplit/>', o.minHeight && !isHead && empty ? `<w:trHeight w:val="${o.minHeight}"/>` : ''].join('');
+    const h = o.rowHeight || (o.minHeight && !isHead && empty ? o.minHeight : 0);
+    const trpr = [isHead ? '<w:tblHeader/><w:cantSplit/>' : '<w:cantSplit/>', h ? `<w:trHeight w:val="${h}"/>` : ''].join('');
     return `<w:tr><w:trPr>${trpr}</w:trPr>${cells}</w:tr>`;
   }).join('');
-  return `<w:tbl><w:tblPr><w:tblW w:w="${total}" w:type="dxa"/><w:tblBorders>${border}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${body}</w:tbl>${p('', { spaceAfter: 60 })}`;
+  const after = o.after === false ? '' : p('', { spaceAfter: 60 });
+  return `<w:tbl><w:tblPr><w:tblW w:w="${total}" w:type="dxa"/>${o.align === 'center' ? '<w:jc w:val="center"/>' : ''}<w:tblBorders>${border}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="${o.borders === false ? 0 : 80}" w:type="dxa"/><w:right w:w="${o.borders === false ? 0 : 80}" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${body}</w:tbl>${after}`;
 }
 
 /** Image insérée (rId de la relation, taille en cm). */
@@ -147,38 +164,56 @@ export function image(rId, id, wCm, hCm, name = 'image') {
   return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="${x(name)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="${x(name)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
 }
 
-const STYLES = (accent) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="21"/><w:szCs w:val="21"/><w:lang w:val="fr-CH"/></w:rPr></w:rPrDefault>
-<w:pPrDefault><w:pPr><w:spacing w:after="100" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
-<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>
-<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="120"/></w:pPr><w:rPr><w:b/><w:color w:val="${accent}"/><w:sz w:val="52"/><w:szCs w:val="52"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="2" w:color="${accent}"/></w:pBdr><w:spacing w:before="360" w:after="140"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:color w:val="${accent}"/><w:sz w:val="30"/><w:szCs w:val="30"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="200" w:after="80"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:color w:val="404040"/><w:sz w:val="23"/><w:szCs w:val="23"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="808080"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:style>
-</w:styles>`;
+const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const relsXml = (list) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${list.map(([id, type, target]) => `<Relationship Id="${id}" Type="${REL}/${type}" Target="${target}"/>`).join('\n')}
+</Relationships>`;
 
 /**
  * Assemble le document.
- * @param {object} d { body: string (XML des paragraphes), images: [{rId, bytes}], footer: string, accent }
+ * @param {object} d
+ *   body     : XML des paragraphes
+ *   images   : [{ rId, bytes, ext }] images du corps
+ *   styles   : styles.xml complet ; numbering : numbering.xml (facultatif)
+ *   header, footer, firstHeader, firstFooter : { xml, images: [{ rId, bytes, ext }] } (facultatifs)
+ *   margins  : { top, right, bottom, left, header, footer } en twips
  */
-export function buildDocx({ body, images = [], footer = '', accent = '7B3F00', title = '' }) {
-  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
-  const fld = (instr) => `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${instr} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
-  const footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:ftr ${NS}><w:p><w:pPr><w:pStyle w:val="Footer"/><w:tabs><w:tab w:val="right" w:pos="9638"/></w:tabs></w:pPr>${run(footer)}<w:r><w:tab/></w:r>${run('Page ')}${fld('PAGE')}${run(' / ')}${fld('NUMPAGES')}</w:p></w:ftr>`;
-  const sect = '<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>';
+export function buildDocx({ body, images = [], styles, numbering = null, header = null, footer = null, firstHeader = null, firstFooter = null, margins = {}, title = '' }) {
+  const m = { top: 1418, right: 1418, bottom: 1134, left: 1418, header: 567, footer: 397, ...margins };
+  const files = [];
+  const media = [];
+  const docRels = [['rIdStyles', 'styles', 'styles.xml'], ['rIdSettings', 'settings', 'settings.xml']];
+  if (numbering) docRels.push(['rIdNumbering', 'numbering', 'numbering.xml']);
+  const addMedia = (prefix, list, rels) => list.forEach((im) => {
+    const name = `${prefix}_${im.rId}.${im.ext || 'png'}`;
+    media.push({ name: `word/media/${name}`, data: im.bytes });
+    rels.push([im.rId, 'image', `media/${name}`]);
+  });
+  addMedia('doc', images, docRels);
+
+  const overrides = [];
+  const parts = [['header', header, 'default', 'hdr'], ['footer', footer, 'default', 'ftr'], ['header', firstHeader, 'first', 'hdr'], ['footer', firstFooter, 'first', 'ftr']];
+  const refs = [];
+  parts.forEach(([kind, part, type, tag], i) => {
+    if (!part) return;
+    const name = `${kind}${i + 1}.xml`;
+    const rId = `rId${kind}${i + 1}`;
+    const rels = [];
+    addMedia(`${kind}${i + 1}`, part.images || [], rels);
+    files.push({ name: `word/${name}`, data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:${tag} ${NS}>${part.xml || '<w:p/>'}</w:${tag}>` });
+    if (rels.length) files.push({ name: `word/_rels/${name}.rels`, data: relsXml(rels) });
+    docRels.push([rId, kind, name]);
+    refs.push(`<w:${kind}Reference w:type="${type}" r:id="${rId}"/>`);
+    overrides.push(`<Override PartName="/word/${name}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${kind}+xml"/>`);
+  });
+  const titlePg = firstHeader || firstFooter ? '<w:titlePg/>' : '';
+  const sect = `<w:sectPr>${refs.join('')}<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${m.top}" w:right="${m.right}" w:bottom="${m.bottom}" w:left="${m.left}" w:header="${m.header}" w:footer="${m.footer}" w:gutter="0"/>${titlePg}</w:sectPr>`;
   const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document ${NS}><w:body>${body}${sect}</w:body></w:document>`;
-  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-<Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
-<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
-${images.map((im) => `<Relationship Id="${im.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${im.rId}.png"/>`).join('\n')}
-</Relationships>`;
   const settings = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="708"/><w:decimalSymbol w:val="."/><w:listSeparator w:val=";"/></w:settings>`;
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="708"/><w:hyphenationZone w:val="425"/><w:characterSpacingControl w:val="doNotCompress"/><w:decimalSymbol w:val="."/><w:listSeparator w:val=";"/></w:settings>`;
   const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const core = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${x(title)}</dc:title><dc:language>fr-CH</dc:language><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`;
@@ -187,15 +222,18 @@ ${images.map((im) => `<Relationship Id="${im.rId}" Type="http://schemas.openxmlf
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Default Extension="png" ContentType="image/png"/>
+<Default Extension="jpg" ContentType="image/jpeg"/>
+<Default Extension="jpeg" ContentType="image/jpeg"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
-<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
+${numbering ? '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' : ''}
+${overrides.join('\n')}
 <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
 </Types>`;
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+<Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
 </Relationships>`;
   return zip([
@@ -203,10 +241,11 @@ ${images.map((im) => `<Relationship Id="${im.rId}" Type="http://schemas.openxmlf
     { name: '_rels/.rels', data: rootRels },
     { name: 'docProps/core.xml', data: core },
     { name: 'word/document.xml', data: doc },
-    { name: 'word/styles.xml', data: STYLES(accent) },
+    { name: 'word/styles.xml', data: styles },
     { name: 'word/settings.xml', data: settings },
-    { name: 'word/footer1.xml', data: footerXml },
-    { name: 'word/_rels/document.xml.rels', data: rels },
-    ...images.map((im) => ({ name: `word/media/${im.rId}.png`, data: im.bytes })),
+    ...(numbering ? [{ name: 'word/numbering.xml', data: numbering }] : []),
+    { name: 'word/_rels/document.xml.rels', data: relsXml(docRels) },
+    ...files,
+    ...media,
   ]);
 }

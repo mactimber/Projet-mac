@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne + cache des tuiles cartographiques.
 
-const APP_CACHE = 'e17-app-v2';
+const APP_CACHE = 'e17-app-v3';
 const TILE_CACHE = 'e17-tiles-v1';
 const MAX_RUNTIME_TILES = 6000;
 
@@ -36,10 +36,17 @@ const APP_FILES = [
   'icons/logo-vallon-512.png',
 ];
 
+// Images du dossier Word : mises en cache si elles sont présentes (l'application s'installe aussi sans elles)
+const IMAGES_DOSSIER = ['img/logo-kmacheret.png', 'img/entete-racines.jpg', 'img/pied-arbres.jpg'];
+
 const TILE_HOSTS = ['wmts.geo.admin.ch', 'wms.geo.admin.ch', 'tile.openstreetmap.org', 'ogc.vd.ch', 'geodienste.ch'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(APP_CACHE).then((c) => c.addAll(APP_FILES)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(APP_CACHE)
+      .then((c) => c.addAll(APP_FILES).then(() => Promise.allSettled(IMAGES_DOSSIER.map((f) => c.add(f)))))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (event) => {
