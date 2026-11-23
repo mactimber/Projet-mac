@@ -58,7 +58,7 @@ function estSecours(kind) {
 /** Plan d'organisation : groupes « Coupe » et « Zones et lignes », textes, et un petit repère H. */
 function estOrga(kind) {
   const d = SYMBOL_BY_KIND[kind];
-  return !!d && (d.group === 'Coupe' || d.group === 'Zones et lignes' || kind === 'texte' || kind === 'heli');
+  return !!d && (['Coupe', 'Zones et lignes', 'Logistique et accès', 'Câble-grue', 'Nature et notes'].includes(d.group) || kind === 'texte' || kind === 'heli');
 }
 
 const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '’');
@@ -562,7 +562,7 @@ function fitOrgMap(chantier, { auto = false } = {}) {
     const pts = [...(chantier.parcel || [])];
     for (const s of chantier.symbols) {
       const d = SYMBOL_BY_KIND[s.kind];
-      if (!d || !(d.group === 'Coupe' || ['zone', 'layon'].includes(s.kind))) continue;
+      if (!d || !(d.group === 'Coupe' || ['zone', 'layon', 'zone_rajeunissement', 'layon_debardage', 'roulotte'].includes(s.kind))) continue;
       if (s.lat != null) pts.push([s.lat, s.lng]);
       if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
       if (s.pts) pts.push(...s.pts);

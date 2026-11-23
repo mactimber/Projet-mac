@@ -60,6 +60,26 @@ const POINT_SVG = {
     <circle cx="16.5" cy="14" r="9" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
     <circle cx="31" cy="17.5" r="3.6" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
     <path d="M21.2 18.6L25.4 26.8" stroke="${RED}" stroke-width="2.6" stroke-linecap="round"/>`],
+  // Roulotte de chantier (vue de dessus, beige)
+  roulotte: [56, 28, `<rect x="2" y="3" width="44" height="22" rx="2" fill="#efe3c8" stroke="#111" stroke-width="2"/>
+    <path d="M10 3V25M38 3V25" stroke="#8a7a5a" stroke-width="1.4"/><path d="M46 14H54" stroke="#111" stroke-width="2.4" stroke-linecap="round"/>`],
+  // Câble-grue mobile (camion avec mât)
+  cable_mobile: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#e8641e" stroke-width="2.5"/>
+    <rect x="7" y="23" width="20" height="6" rx="1" fill="#111"/><path d="M27 29V21h5l2.5 4v4z" fill="#111"/>
+    <circle cx="11.5" cy="31" r="2.3" fill="#111"/><circle cx="29.5" cy="31" r="2.3" fill="#111"/>
+    <path d="M12 23L17 7M17 7L33 14" stroke="#111" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M17 7L34 13" stroke="#e8641e" stroke-width="1.6" stroke-dasharray="3 2"/>`],
+  // Support de câble-grue (chevalet)
+  cable_support: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#e8641e" stroke-width="2.5"/>
+    <path d="M20 8L11 32M20 8L29 32M20 8V32" stroke="#111" stroke-width="2.6" stroke-linecap="round"/><circle cx="20" cy="8" r="3" fill="#e8641e" stroke="#111" stroke-width="1.2"/>`],
+  // Ancrage de câble-grue
+  cable_ancrage: [40, 40, `<circle cx="20" cy="20" r="14" fill="#6d4c2f" stroke="#111" stroke-width="2.5"/><circle cx="20" cy="20" r="5" fill="none" stroke="#fff" stroke-width="2.4"/>`],
+  // Arbre-habitat à conserver (feuillu, bande blanche « H »)
+  arbre_habitat: [40, 40, `<circle cx="20" cy="20" r="18" fill="#fff" stroke="#2e7d32" stroke-width="2.5"/>
+    <rect x="18" y="21" width="4" height="13" fill="#6d4c2f"/><circle cx="20" cy="15" r="10" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
+    <text x="20" y="19.5" font-size="11" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#fff">H</text>`],
+  // Annotation (A dans un rond noir, texte à côté)
+  annotation: [40, 40, '<circle cx="20" cy="20" r="15" fill="#111"/><text x="20" y="26" font-size="17" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#fff">A</text>'],
   depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
@@ -91,6 +111,22 @@ export const SYMBOLS = [
   { kind: 'electrique', group: 'Zones et lignes', label: 'Ligne électrique', mode: 'line', color: '#111', weight: 3, lineLabel: 'Ligne électrique', hint: 'Touchez les pylônes un par un, puis « Terminer ».' },
   { kind: 'circulation', group: 'Zones et lignes', label: 'Flèche (circulation)', mode: 'line', color: RED, weight: 4, arrowEnd: true, hint: 'Touchez les points du trajet, puis « Terminer ».' },
   { kind: 'distance', group: 'Zones et lignes', label: 'Distance (cote)', mode: 'line', maxPts: 2, color: '#f39200', weight: 3, arrowEnd: true, arrowStart: true, measure: true, hint: 'Touchez le début puis la fin de la mesure.' },
+  // --- Logistique et accès
+  { kind: 'sortie_simple', group: 'Logistique et accès', label: 'Direction de sortie simple', mode: 'line', color: '#111', weight: 4, arrowEnd: true, hint: 'Touchez les points du trajet de sortie, puis « Terminer ».' },
+  { kind: 'sortie_double', group: 'Logistique et accès', label: 'Direction de sortie double', mode: 'line', color: '#111', weight: 4, arrowEnd: true, arrowStart: true, hint: 'Touchez les points du trajet, puis « Terminer ».' },
+  { kind: 'chemin_utilise', group: 'Logistique et accès', label: 'Chemin / piste utilisé', mode: 'line', color: '#4f6475', weight: 4, hint: 'Touchez les points du chemin, puis « Terminer ».' },
+  { kind: 'layon_debardage', group: 'Logistique et accès', label: 'Layon de débardage', mode: 'line', color: '#8d5a2b', weight: 4, dash: '9 6', hint: 'Touchez les points du layon, puis « Terminer ».' },
+  { kind: 'limite_vidange', group: 'Logistique et accès', label: 'Limite de vidange', mode: 'line', color: '#7b3fa0', weight: 3, dash: '6 5', hint: 'Touchez les points de la limite, puis « Terminer ».' },
+  { kind: 'roulotte', group: 'Logistique et accès', label: 'Roulotte de chantier', mode: 'orient', askText: '', hint: 'Touchez l\'emplacement de la roulotte, puis tournez la poignée ⟳.' },
+  // --- Câble-grue
+  { kind: 'cable_ligne', group: 'Câble-grue', label: 'Ligne de câble-grue', mode: 'line', color: '#e8641e', weight: 3, dash: '10 5', hint: 'Touchez le départ, les supports, puis l\'arrivée ; « Terminer ».' },
+  { kind: 'cable_mobile', group: 'Câble-grue', label: 'Câble-grue mobile', mode: 'point', hint: 'Touchez l\'emplacement du câble-grue mobile.' },
+  { kind: 'cable_support', group: 'Câble-grue', label: 'Support', mode: 'point', hint: 'Touchez l\'emplacement du support.' },
+  { kind: 'cable_ancrage', group: 'Câble-grue', label: 'Ancrage', mode: 'point', hint: 'Touchez l\'emplacement de l\'ancrage.' },
+  // --- Nature et notes
+  { kind: 'zone_rajeunissement', group: 'Nature et notes', label: 'Zone de rajeunissement', mode: 'zone', zoneColor: '#2a9d8f', defaultName: 'Rajeunissement', hint: 'Touchez les coins de la zone, puis « Terminer ».' },
+  { kind: 'arbre_habitat', group: 'Nature et notes', label: 'Arbre-habitat à conserver', mode: 'point', askText: '', hint: 'Touchez l\'arbre-habitat.' },
+  { kind: 'annotation', group: 'Nature et notes', label: 'Annotation', mode: 'point', askText: '', hint: 'Touchez la carte, puis écrivez l\'annotation.' },
   // --- Signalisation
   { kind: 'triopan', group: 'Signalisation', label: 'Triopan', mode: 'point', hint: 'Touchez l\'emplacement du Triopan.' },
   { kind: 'trois_lattes', group: 'Signalisation', label: 'Trois lattes', mode: 'point', hint: 'Touchez l\'emplacement des trois lattes.' },
@@ -121,7 +157,10 @@ export function symbolArt(kind) {
   if (def.mode === 'wedge') return [40, 40, WEDGE_SVG];
   if (def.mode === 'arrow') return [40, 40, debutIcon(def.color)];
   if (def.mode === 'line') return lineIcon(def);
-  if (def.mode === 'zone') return [40, 40, `<path d="M5 12L22 4L36 14L32 34L9 31Z" fill="${ZONE_COLORS[0]}" fill-opacity=".22" stroke="${ZONE_COLORS[0]}" stroke-width="2.5" stroke-dasharray="5 3" stroke-linejoin="round"/><rect x="10" y="15" width="20" height="9" rx="1.5" fill="#fff" stroke="${ZONE_COLORS[0]}" stroke-width="1.5"/>`];
+  if (def.mode === 'zone') {
+    const zc = def.zoneColor || ZONE_COLORS[0];
+    return [40, 40, `<path d="M5 12L22 4L36 14L32 34L9 31Z" fill="${zc}" fill-opacity=".22" stroke="${zc}" stroke-width="2.5" stroke-dasharray="5 3" stroke-linejoin="round"/><rect x="10" y="15" width="20" height="9" rx="1.5" fill="#fff" stroke="${zc}" stroke-width="1.5"/>`];
+  }
   if (kind === 'texte') return [40, 40, '<rect x="3" y="8" width="34" height="24" fill="#fff" stroke="#111" stroke-width="2.5"/><path d="M9 15h22M9 21h22M9 27h14" stroke="#111" stroke-width="2.4"/>'];
   return [40, 40, ''];
 }
@@ -135,7 +174,7 @@ export function symbolSvg(kind, height = 36) {
 
 /** Taille d'affichage sur la carte (hauteur en px). */
 export function mapHeight(kind) {
-  return { trois_lattes: 44, bache: 26, barriere: 22, helico: 26, vehicule: 30, pile: 28, depot: 14 }[kind] || 30;
+  return { trois_lattes: 44, bache: 26, barriere: 22, helico: 26, vehicule: 30, pile: 28, depot: 14, roulotte: 22, cable_ancrage: 22, annotation: 24 }[kind] || 30;
 }
 
 /** Tête de flèche pointant vers le haut. */

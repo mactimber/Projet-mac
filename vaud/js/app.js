@@ -685,9 +685,11 @@ function finishLine() {
 }
 
 function finishZone() {
-  const name = prompt('Nom de la zone (ex. Zone marécage, Arbres au tracteur, Hélico) :', '');
+  const def = SYMBOL_BY_KIND[placing.kind];
+  // zones « libres » : nom et couleur au choix ; zones typées (ex. rajeunissement) : couleur fixe, nom proposé
+  const name = prompt(def.zoneColor ? 'Nom affiché sur la zone (facultatif) :' : 'Nom de la zone (ex. Zone marécage, Arbres au tracteur, Hélico) :', def.defaultName || '');
   const used = chantier.symbols.filter((x) => x.kind === 'zone').length;
-  chantier.symbols.push({ id: uid(), kind: 'zone', pts: placing.pts.map((p) => [p.lat, p.lng]), text: name || '', color: ZONE_COLORS[used % ZONE_COLORS.length] });
+  chantier.symbols.push({ id: uid(), kind: def.kind, pts: placing.pts.map((p) => [p.lat, p.lng]), text: name || '', color: def.zoneColor || ZONE_COLORS[used % ZONE_COLORS.length] });
   placing.pts = [];
   tempGroup.clearLayers();
   drawSymbols();
@@ -731,7 +733,7 @@ map.on('click', (e) => {
   if (def.mode === 'zone') {
     placing.pts.push(ll);
     tempGroup.clearLayers();
-    const color = ZONE_COLORS[chantier.symbols.filter((x) => x.kind === 'zone').length % ZONE_COLORS.length];
+    const color = def.zoneColor || ZONE_COLORS[chantier.symbols.filter((x) => x.kind === 'zone').length % ZONE_COLORS.length];
     (placing.pts.length > 2 ? L.polygon : L.polyline)(placing.pts, { color, weight: 3, dashArray: '6 6', fillOpacity: 0.15 }).addTo(tempGroup);
     placing.pts.forEach((p) => L.circleMarker(p, { radius: 6, color: '#111', weight: 2, fillColor: '#fff', fillOpacity: 1 }).addTo(tempGroup));
     $('#hint-text').textContent = placing.pts.length < 3 ? 'Touchez le coin suivant.' : `${placing.pts.length} coins. Touchez le suivant, ou « Terminer » pour nommer la zone.`;
