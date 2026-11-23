@@ -600,3 +600,29 @@ body.viewer #map { bottom: 0; }
 .sym .lbl-heli { color: #b00000; border-color: #e31e24; }
 .sym .lbl-point_t { color: #0b4f7e; border-color: #1a8fd0; }
 .print-layout .sym .lbl-heli, .print-layout .sym .lbl-point_t { font-size: 15px; }
+
+/* Étape 2 : feuille des symboles plus discrète (la carte reste visible) */
+.sheet-headrow { display: flex; align-items: center; gap: 8px; position: sticky; top: -16px; background: #fff; z-index: 2; margin: -16px -16px 0; padding: 12px 16px 6px; }
+.sheet-headrow h2 { flex: 1; margin: 0; font-size: 17px; }
+.sheet-toggle { min-height: 0; padding: 6px 12px; font-size: 14px; font-weight: 700; border-radius: 18px; white-space: nowrap; }
+.sheet.reduit { max-height: none; overflow: hidden; }
+.sheet.reduit .sheet-body > :not(.sheet-headrow) { display: none; }
+.sheet.reduit .sheet-headrow { position: static; margin: -16px -16px -14px; }
+/* boutons de symboles compacts */
+.palette { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
+.palette button { min-height: 66px; padding: 5px 3px; gap: 3px; border-radius: 10px; }
+.palette button svg { max-height: 26px; }
+.palette button span { font-size: 11.5px; line-height: 1.1; }
+.pal-title { margin: 8px 0 4px; font-size: 11.5px; }
+/* grand écran : la feuille devient un panneau sur le côté gauche */
+@media (min-width: 900px) {
+  .sheet {
+    left: 12px; right: auto; width: 360px; top: calc(var(--top) + env(safe-area-inset-top) + 12px); bottom: calc(var(--steps) + var(--safe-b) + 12px);
+    max-height: none; border-radius: 14px;
+  }
+  .sheet.reduit { top: auto; bottom: calc(var(--steps) + var(--safe-b) + 12px); }
+  .sheet-body { max-width: none; }
+  .palette { grid-template-columns: repeat(3, 1fr); }
+}
+/* téléphone : la feuille des symboles ne dépasse pas ~45 % de l'écran (on fait défiler les symboles) */
+@media (max-width: 899px) { .sheet:has(.palette) { max-height: 45%; } .sheet.reduit { max-height: none; } }

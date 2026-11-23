@@ -442,6 +442,7 @@ function openStep(step) {
   currentStep = step;
   $$('.steps button').forEach((b) => b.classList.toggle('active', b.dataset.step === step));
   $('#sheet').hidden = false;
+  $('#sheet').classList.toggle('reduit', false); // seule l'étape 2 peut être réduite
   if (step === 'parcelle') renderParcelSheet();
   if (step === 'symboles') renderSymbolSheet();
 }
@@ -590,14 +591,28 @@ map.on('zoomend', drawRotate);
 
 function renderSymbolSheet() {
   $('#sheet-body').innerHTML = `
-    <h2>2. Placer les symboles</h2>
+    <div class="sheet-headrow"><h2>2. Placer les symboles</h2><button type="button" class="sheet-toggle" id="sheet-toggle"></button></div>
     ${GROUPS.map((g) => `<h3 class="pal-title">${esc(g)}</h3><div class="palette">
       ${SYMBOLS.filter((s) => s.group === g).map((s) => `<button type="button" data-kind="${s.kind}">${symbolSvg(s.kind, 34)}<span>${esc(s.label)}</span></button>`).join('')}
     </div>`).join('')}
     <div class="big-actions"><button type="button" id="s-next" class="primary">Suivant : fiche de secours →</button></div>`;
   $$('.palette button').forEach((b) => b.addEventListener('click', () => startPlacing(b.dataset.kind)));
   $('#s-next').addEventListener('click', () => openFiche());
+  // Feuille repliable : on garde la carte visible
+  const appliquer = (r) => {
+    $('#sheet').classList.toggle('reduit', r);
+    $('#sheet-toggle').textContent = r ? '▴ Afficher les symboles' : '▾ Réduire';
+  };
+  let reduit = false;
+  try { reduit = localStorage.getItem(LS_SHEET) === '1'; } catch { /* stockage indisponible */ }
+  appliquer(reduit);
+  $('#sheet-toggle').addEventListener('click', () => {
+    reduit = !$('#sheet').classList.contains('reduit');
+    appliquer(reduit);
+    try { localStorage.setItem(LS_SHEET, reduit ? '1' : '0'); } catch { /* stockage indisponible */ }
+  });
 }
+const LS_SHEET = 'vd-sheet-reduit';
 
 function backToPalette() {
   stopPlacing();
