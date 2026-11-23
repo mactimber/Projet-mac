@@ -199,13 +199,6 @@ export function renderFiche(root, chantier, opt) {
     <button type="button" id="fiche-print" class="primary">🖨 Imprimer / PDF</button>
   </div>
 
-  <div class="fiche-calls no-print">
-    <a href="tel:144" class="call c144"><b>144</b> Ambulance</a>
-    <a href="tel:1414" class="call c1414"><b>1414</b> Rega</a>
-    <a href="tel:${esc((info.resp_tel || '').replace(/\s/g, ''))}" class="call c-resp" id="call-resp" ${info.resp_tel ? '' : 'hidden'}>
-      <b id="call-resp-nom">${esc(info.responsable || '')}</b><span id="call-resp-role">${esc([info.resp_role, info.resp_tel].filter(Boolean).join(' · '))}</span>
-    </a>
-  </div>
 
   <!-- Page 1 : plan de secours -->
   <article class="page cf-page cf-secours">
@@ -349,12 +342,8 @@ export function renderFiche(root, chantier, opt) {
     <footer class="cf-foot"><span></span><span>Établi le ${etabli} · Page 3/3</span></footer>
   </article>`;
 
+  // Responsable affiché à l'impression (page 3) et sur le plan d'organisation (page 2)
   const updateCall = () => {
-    const a = root.querySelector('#call-resp');
-    a.hidden = !info.resp_tel;
-    a.href = `tel:${(info.resp_tel || '').replace(/\s/g, '')}`;
-    root.querySelector('#call-resp-nom').textContent = info.responsable || 'Responsable';
-    root.querySelector('#call-resp-role').textContent = [info.resp_role, info.resp_tel].filter(Boolean).join(' · ');
     root.querySelector('#resp-print').textContent = [info.responsable, info.resp_role, info.resp_tel].filter(Boolean).join(' – ');
     root.querySelector('#resp-org').textContent = info.responsable || '';
   };
