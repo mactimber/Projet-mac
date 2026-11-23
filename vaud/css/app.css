@@ -566,3 +566,29 @@ body.viewer #map { bottom: 0; }
 .print-layout .cf-under .f-qr #f-qr-img svg { width: 17mm; height: 17mm; }
 .print-layout .cf-under .f-qr span { font-size: 8px; }
 .print-layout .cf-head .f-auto textarea { font-size: 13px; }
+
+/* Coordonnées H et T bien lisibles (comme le plan CFPF) */
+.cf-box { display: flex; align-items: center; gap: 12px; border-width: 2px; border-radius: 10px; padding: 8px 14px; }
+.cf-h { background: #fdeeee; border-color: #e31e24; }
+.cf-t { background: #eaf3fc; border-color: #1a8fd0; }
+.cf-sym { flex: none; line-height: 0; }
+.cf-box-c { flex: 1; min-width: 0; }
+.cf-box-t { display: block; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.cf-big { font-family: Arial, Helvetica, system-ui, sans-serif; font-weight: 800; font-size: 34px; line-height: 1.05; letter-spacing: -.01em; }
+.cf-t .f-row { margin: 2px 0 0; }
+.cf-t .f-row > span { display: none; }
+.cf-t .f-auto textarea { background: transparent; border: 0; border-bottom: 1.5px dotted #8bb8db; padding: 1px 0; font-size: 15px; font-weight: 700; color: #1d2b36; }
+.cf-t .f-refresh { background: transparent; }
+@media (max-width: 700px) { .cf-big { font-size: 26px; } .cf-sym svg { width: 36px; height: 36px; } }
+.print-layout .cf-box { padding: 2mm 4mm; border-width: 2px; }
+.print-layout .cf-big { font-size: 31px; white-space: nowrap; }
+.print-layout .cf-t .f-auto textarea { border-bottom: 0; font-size: 13px; }
+.print-layout .cf-t .f-refresh { display: none; }
+
+/* Poignée pour tourner une direction d'abattage */
+.rot-handle { background: none; border: 0; }
+.rot-handle div {
+  width: 44px; height: 44px; border-radius: 50%; background: #1f9a3a; color: #fff; border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 700; touch-action: none; cursor: grab;
+}

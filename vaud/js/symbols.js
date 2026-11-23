@@ -75,7 +75,7 @@ export const SYMBOLS = [
   { kind: 'acces_t', group: 'Secours', label: 'Accès au point T (route)', mode: 'line', color: '#1a8fd0', outline: '#fff', weight: 4, dash: '10 7', arrowEnd: true, midArrows: true, hint: 'Suivez la route du chantier jusqu\'au point T (dézoomez si besoin), puis « Terminer ».' },
   { kind: 'helico', group: 'Secours', label: 'Hélicoptère', mode: 'point', hint: 'Touchez la place de l\'hélicoptère.' },
   // --- Coupe
-  { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis la direction de chute.' },
+  { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis tournez la poignée ⟳ pour la direction de chute.' },
   { kind: 'arbre_demonter', group: 'Coupe', label: 'Arbre à démonter', mode: 'point', askText: '', hint: 'Touchez l\'arbre à démonter.' },
   { kind: 'arbre_dangereux', group: 'Coupe', label: 'Arbre dangereux', mode: 'point', askText: '', hint: 'Touchez l\'arbre dangereux.' },
   { kind: 'arbre_tailler', group: 'Coupe', label: 'Arbre à tailler', mode: 'point', askText: '', hint: 'Touchez l\'arbre à tailler.' },

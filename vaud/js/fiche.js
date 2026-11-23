@@ -173,7 +173,7 @@ export function renderFiche(root, chantier, opt) {
   const coordsGrand = (s) => {
     if (!s) return '<span class="missing">à placer sur la carte (étape 2)</span>';
     const { E, N } = wgs84ToLV95(s.lat, s.lng);
-    return `<span class="cf-big">${fmt(E)} / ${fmt(N)}</span><span class="cf-wgs">MN95 · ${s.lat.toFixed(5)}° N, ${s.lng.toFixed(5)}° E${s.alt ? ` · alt. ${Math.round(s.alt)} m` : ''}</span>`;
+    return `<span class="cf-big">${fmt(E)} / ${fmt(N)}</span>`;
   };
   const NORD = '<div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>';
   const etabli = new Date().toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -205,13 +205,19 @@ export function renderFiche(root, chantier, opt) {
     </header>
     <section class="cf-coords">
       <div class="cf-box cf-h">
-        <div class="cf-box-t">${symbolSvg('heli', 30)}<span>COORDONNÉES H</span><small>sauvetage aérien</small></div>
-        <div class="cf-box-v">${coordsGrand(heli)}</div>
+        <div class="cf-sym">${symbolSvg('heli', 46)}</div>
+        <div class="cf-box-c">
+          <div class="cf-box-t">COORDONNÉES H</div>
+          ${coordsGrand(heli)}
+        </div>
       </div>
       <div class="cf-box cf-t">
-        <div class="cf-box-t">${symbolSvg('point_t', 30)}<span>COORDONNÉES T</span><small>rencontre avec l'ambulance</small></div>
-        <div class="cf-box-v">${coordsGrand(T)}</div>
-        ${placeRow('localite_t', 'Lieu / adresse', T, 'ex. Parking du Chalet-à-Gobet')}
+        <div class="cf-sym">${symbolSvg('point_t', 46)}</div>
+        <div class="cf-box-c">
+          <div class="cf-box-t">COORDONNÉES T</div>
+          ${coordsGrand(T)}
+          ${placeRow('localite_t', 'Lieu / adresse', T, 'ex. Parking du Chalet-à-Gobet')}
+        </div>
       </div>
     </section>
     <section class="cf-nums">

@@ -302,12 +302,15 @@ function drawParcel() {
   });
 }
 
+const layerById = new Map();
 function drawSymbols() {
   symbolGroup.clearLayers();
+  layerById.clear();
   for (const s of chantier.symbols) {
     const def = SYMBOL_BY_KIND[s.kind];
     const layer = symbolLayer(s, { interactive: true, draggable: def && ['point', 'wedge', 'orient'].includes(def.mode) });
     if (!layer) continue;
+    layerById.set(s.id, layer);
     layer.on('click', (e) => {
       if (placing) return;
       L.DomEvent.stop(e);
@@ -325,11 +328,13 @@ function drawSymbols() {
         }
         if (s.kind === 'heli' || s.kind === 'point_t') fetchPlace(s);
         if (def.coordLabel) layer.setIcon(symbolLayer(s).options.icon);
+        if (rotSel === s) drawRotate();
         save();
       });
     }
     layer.addTo(symbolGroup);
   }
+  drawRotate();
 }
 
 function symbolPopup(s, latlng) {
@@ -364,6 +369,12 @@ function symbolPopup(s, latlng) {
   });
   div.querySelector('[data-a=rotate]')?.addEventListener('click', () => {
     map.closePopup(pop);
+    if (def.mode === 'wedge') {
+      $('#sheet').hidden = true;
+      showRotate(s);
+      hint('Tournez la poignée ⟳ autour de l\'arbre pour la direction de chute.', () => { hideRotate(); hideHint(); });
+      return;
+    }
     rotating = s;
     $('#sheet').hidden = true;
     hint(def.mode === 'wedge' ? 'Touchez la direction de chute.' : 'Touchez la direction de la longueur.', () => { rotating = null; hideHint(); });
@@ -541,6 +552,42 @@ function setParcel(ring) {
 let placing = null; // { kind, first?, pts? }
 const tempGroup = L.layerGroup().addTo(map);
 
+/* Direction d'abattage : poignée ⟳ à faire tourner autour de l'arbre avec le doigt */
+const rotGroup = L.layerGroup().addTo(map);
+let rotSel = null;
+const ROT_R = 58; // rayon du cercle de rotation (px)
+function showRotate(s) {
+  rotSel = s;
+  drawRotate();
+}
+function hideRotate() {
+  rotSel = null;
+  rotGroup.clearLayers();
+}
+function drawRotate() {
+  rotGroup.clearLayers();
+  const s = rotSel;
+  if (!s || !chantier?.symbols.includes(s)) { rotSel = null; return; }
+  const c = map.latLngToContainerPoint([s.lat, s.lng]);
+  const a = ((s.angle || 0) * Math.PI) / 180;
+  const pos = map.containerPointToLatLng([c.x + ROT_R * Math.sin(a), c.y - ROT_R * Math.cos(a)]);
+  L.circleMarker([s.lat, s.lng], { radius: ROT_R, color: '#1f9a3a', weight: 2, dashArray: '4 6', fill: false, interactive: false }).addTo(rotGroup);
+  const h = L.marker(pos, {
+    draggable: true, zIndexOffset: 3000, keyboard: false,
+    icon: L.divIcon({ className: 'rot-handle', html: '<div>⟳</div>', iconSize: [44, 44], iconAnchor: [22, 22] }),
+  }).addTo(rotGroup);
+  h.on('drag', () => {
+    s.angle = bearing([s.lat, s.lng], h.getLatLng());
+    layerById.get(s.id)?.setIcon(symbolLayer(s).options.icon);
+  });
+  h.on('dragend', () => {
+    save();
+    drawRotate(); // la poignée revient sur le cercle
+  });
+  h.on('click', (e) => L.DomEvent.stop(e));
+}
+map.on('zoomend', drawRotate);
+
 function renderSymbolSheet() {
   $('#sheet-body').innerHTML = `
     <h2>2. Placer les symboles</h2>
@@ -574,6 +621,7 @@ function startPlacing(kind) {
 
 function stopPlacing() {
   placing = null;
+  hideRotate();
   tempGroup.clearLayers();
   map.getContainer().classList.remove('placing');
   hideHint();
@@ -608,8 +656,23 @@ map.on('click', (e) => {
     save();
     return;
   }
-  if (!placing) return;
+  if (!placing) {
+    if (rotSel) { hideRotate(); hideHint(); }
+    return;
+  }
   const def = SYMBOL_BY_KIND[placing.kind];
+
+  if (def.mode === 'wedge') {
+    // Un toucher pose l'arbre (même direction que le précédent) ; la poignée ⟳ permet de l'orienter
+    const prev = [...chantier.symbols].reverse().find((x) => x.kind === def.kind);
+    const s = { id: uid(), kind: def.kind, lat: ll.lat, lng: ll.lng, angle: prev?.angle ?? 0 };
+    chantier.symbols.push(s);
+    rotSel = s;
+    drawSymbols();
+    save();
+    $('#hint-text').textContent = 'Tournez la poignée ⟳ pour la direction de chute. Arbre suivant : touchez la carte, ou « Terminer ».';
+    return;
+  }
 
   if (def.mode === 'wedge' || def.mode === 'arrow' || def.mode === 'orient') {
     if (!placing.first) {
