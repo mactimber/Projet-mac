@@ -73,7 +73,7 @@ export const SYMBOLS = [
   { kind: 'point_t', group: 'Secours', label: 'Sauvetage terrestre (T)', mode: 'point', unique: true, coordLabel: true, hint: 'Touchez le point de rencontre avec l\'ambulance.' },
   { kind: 'vehicule', group: 'Secours', label: 'Véhicule + pharmacie', mode: 'point', hint: 'Touchez l\'emplacement du véhicule et de la pharmacie.' },
   { kind: 'acces_t', group: 'Secours', label: 'Accès au point T (route)', mode: 'line', color: '#1a8fd0', outline: '#fff', weight: 4, dash: '10 7', arrowEnd: true, midArrows: true, hint: 'Suivez la route du chantier jusqu\'au point T (dézoomez si besoin), puis « Terminer ».' },
-  { kind: 'helico', group: 'Secours', label: 'Hélicoptère', mode: 'point', hint: 'Touchez la place de l\'hélicoptère.' },
+  { kind: 'helico', group: 'Secours', label: 'Place hélicoptère', mode: 'point', hint: 'Touchez la place de l\'hélicoptère.' },
   // --- Coupe
   { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis tournez la poignée ⟳ pour la direction de chute.' },
   { kind: 'arbre_demonter', group: 'Coupe', label: 'Arbre à démonter', mode: 'point', askText: '', hint: 'Touchez l\'arbre à démonter.' },
