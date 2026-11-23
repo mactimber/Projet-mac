@@ -211,7 +211,63 @@ let parcelLayer = null;
 
 const ACTIVE = 'vd-active-chantier';
 let saveTimer = null;
+
+/* ------------------------------------------------------------------ */
+/* Annuler / rétablir : historique du plan (parcelle et symboles)      */
+/* ------------------------------------------------------------------ */
+const histo = { passe: [], futur: [], dernier: null };
+const HISTO_MAX = 60;
+const etatPlan = () => JSON.stringify({ parcel: chantier.parcel || null, symbols: chantier.symbols || [] });
+/** Appelé à chaque enregistrement : garde l'état précédent si le plan a changé. */
+function memoriser() {
+  if (!chantier) return;
+  const e = etatPlan();
+  if (histo.dernier === null) histo.dernier = e;
+  if (e === histo.dernier) return;
+  histo.passe.push(histo.dernier);
+  if (histo.passe.length > HISTO_MAX) histo.passe.shift();
+  histo.futur = [];
+  histo.dernier = e;
+  majHisto();
+}
+function resetHisto() {
+  histo.passe = [];
+  histo.futur = [];
+  histo.dernier = chantier ? etatPlan() : null;
+  majHisto();
+}
+function majHisto() {
+  const u = document.getElementById('btn-undo');
+  const r = document.getElementById('btn-redo');
+  if (u) u.disabled = !histo.passe.length;
+  if (r) r.disabled = !histo.futur.length;
+}
+function restaurer(e) {
+  const o = JSON.parse(e);
+  chantier.parcel = o.parcel;
+  chantier.symbols = o.symbols;
+  histo.dernier = e;
+  hideRotate();
+  drawAll();
+  if (currentStep === 'parcelle') renderParcelSheet();
+  save();
+  majHisto();
+}
+function annuler() {
+  if (!histo.passe.length) return;
+  histo.futur.push(histo.dernier);
+  restaurer(histo.passe.pop());
+  toast('Modification annulée');
+}
+function retablir() {
+  if (!histo.futur.length) return;
+  histo.passe.push(histo.dernier);
+  restaurer(histo.futur.pop());
+  toast('Modification rétablie');
+}
+
 function save(delay = 400) {
+  memoriser();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, delay);
 }
@@ -272,6 +328,7 @@ async function openChantier(c) {
   localStorage.setItem(ACTIVE, chantier.id);
   $('#chantier-name').textContent = chantier.info.name || 'Chantier';
   drawAll();
+  resetHisto(); // l'historique est propre à chaque chantier
   if (chantier.view) map.setView([chantier.view.lat, chantier.view.lng], chantier.view.zoom);
   else if (parcelLayer) map.fitBounds(parcelLayer.getBounds().pad(0.3));
   closeSheet();
@@ -1234,4 +1291,14 @@ async function openViewer(plan) {
 })().catch((e) => {
   console.error(e);
   alert(`Erreur au démarrage : ${e.message}`);
+});
+
+/* Boutons et raccourcis Annuler / Rétablir */
+document.getElementById('btn-undo').addEventListener('click', annuler);
+document.getElementById('btn-redo').addEventListener('click', retablir);
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.target.closest('input, textarea, [contenteditable]')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); annuler(); }
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); retablir(); }
 });

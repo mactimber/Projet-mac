@@ -772,3 +772,8 @@ body.viewer #map { bottom: 0; }
 @media (max-width: 700px) { .cf-big { font-size: min(32px, 9.4cqi); } }
 /* Téléphone : à l'écran, H et T toujours l'un sous l'autre (le PDF portrait garde les deux côte à côte) */
 @media (max-width: 700px) { #fiche:not(.print-layout) .cf-coords { grid-template-columns: 1fr; } }
+
+/* Annuler / rétablir (barre du haut) */
+.icon-btn.icon-histo { min-width: 36px; font-size: 22px; font-weight: 700; }
+.icon-btn.icon-histo:disabled { opacity: .35; }
+@media (max-width: 420px) { .icon-btn.icon-histo { min-width: 30px; font-size: 20px; } }
