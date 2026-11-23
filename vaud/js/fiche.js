@@ -230,7 +230,6 @@ export function renderFiche(root, chantier, opt) {
           <div class="cf-box-t">COORDONNÉES T</div>
           ${coordsGrand(T)}
           ${placeRow('localite_t', 'Lieu / adresse', T, 'Adresse vérifiée sur place, ex. Parking du Chalet-à-Gobet')}
-          <p class="cf-avert no-print">⚠ L'application ne donne que le lieu-dit et la commune. Écrivez l'adresse <b>vérifiée sur place</b> (accès de l'ambulance) : ne recopiez pas une adresse de carte en ligne sans la contrôler.</p>
         </div>
       </div>
     </section>
