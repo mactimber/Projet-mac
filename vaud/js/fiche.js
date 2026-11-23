@@ -186,6 +186,10 @@ export function renderFiche(root, chantier, opt) {
   <div class="fiche-bar no-print">
     <button type="button" id="fiche-close">← Carte</button>
     <span class="spacer"></span>
+    <div class="orient-choix" role="group" aria-label="Orientation du PDF">
+      <button type="button" data-orient="paysage" title="A4 paysage">▭ Paysage</button>
+      <button type="button" data-orient="portrait" title="A4 portrait">▯ Portrait</button>
+    </div>
     <button type="button" id="fiche-print" class="primary">🖨 Imprimer / PDF</button>
   </div>
 
@@ -442,11 +446,28 @@ export function renderFiche(root, chantier, opt) {
   root.querySelector('#fiche-close').addEventListener('click', opt.onClose);
   root.querySelector('#fiche-print').addEventListener('click', () => printFiche(root, chantier));
 
+  // Orientation du PDF (paysage par défaut), enregistrée avec le chantier
+  const appliquerOrient = () => {
+    const portrait = chantier.ficheOrient === 'portrait';
+    root.classList.toggle('orient-portrait', portrait);
+    root.querySelectorAll('[data-orient]').forEach((b) => b.classList.toggle('on', b.dataset.orient === (portrait ? 'portrait' : 'paysage')));
+  };
+  appliquerOrient();
+  root.querySelectorAll('[data-orient]').forEach((b) => b.addEventListener('click', () => {
+    chantier.ficheOrient = b.dataset.orient;
+    appliquerOrient();
+    fitFicheMap(chantier);
+    fitOrgMap(chantier);
+    opt.onChange();
+  }));
+
   // Cartes des deux plans
   const nouvelleCarte = (el) => {
     const m = L.map(el, {
-      zoomControl: false, attributionControl: true, dragging: true, scrollWheelZoom: false,
-      doubleClickZoom: true, touchZoom: true, tap: false, zoomSnap: 0.25,
+      zoomControl: false, attributionControl: true, dragging: true,
+      // roulette de la souris : zoom fin (¼ de niveau par cran) pour régler le cadrage du plan
+      scrollWheelZoom: true, wheelPxPerZoomLevel: 240, wheelDebounceTime: 20,
+      doubleClickZoom: true, touchZoom: true, tap: false, zoomSnap: 0.1, zoomDelta: 0.25,
     });
     m.attributionControl.setPrefix(false);
     opt.makeBaseLayer().addTo(m);
@@ -766,6 +787,14 @@ function updateTInset(chantier) {
 
 /** Passe en mise en page A4, recadre la carte, attend les fonds de carte puis imprime. */
 export function printFiche(root, chantier) {
+  // Format de page selon l'orientation choisie (règle ajoutée après la feuille de style : elle l'emporte)
+  let st = document.getElementById('page-orient');
+  if (!st) {
+    st = document.createElement('style');
+    st.id = 'page-orient';
+    document.head.appendChild(st);
+  }
+  st.textContent = `@media print { @page { size: A4 ${chantier.ficheOrient === 'portrait' ? 'portrait' : 'landscape'}; margin: 8mm; } }`;
   root.classList.add('print-layout');
   root.querySelectorAll('input[type=date]').forEach((d) => d.classList.toggle('is-empty', !d.value));
   root.querySelectorAll('textarea').forEach((t) => { t.style.height = 'auto'; t.style.height = `${t.scrollHeight + 2}px`; });

@@ -636,3 +636,30 @@ body.viewer #map { bottom: 0; }
 .cf-head { border-bottom-color: #1f4d2b; }
 .cf-titre { color: #1f4d2b; }
 .print-layout .cf-legend-col .f-legend { gap: 5px; font-size: 11px; }
+
+/* Choix de l'orientation du PDF (barre de la fiche) */
+.orient-choix { display: flex; border-radius: 10px; overflow: hidden; border: 1.5px solid rgba(255,255,255,.7); }
+.orient-choix button { min-height: 0; border: 0; border-radius: 0; padding: 6px 10px; background: transparent; color: #fff; font-size: 13px; font-weight: 700; }
+.orient-choix button.on { background: #fff; color: var(--green); }
+@media (max-width: 420px) { .orient-choix button { padding: 6px 7px; font-size: 12px; } }
+/* aperçu à l'écran : pages plus étroites en portrait */
+.orient-portrait .cf-page { max-width: 210mm; }
+
+/* Impression en portrait : 194 × 281 mm utiles */
+.print-layout.orient-portrait .page.cf-page { width: 194mm; height: 280mm; }
+.print-layout.orient-portrait .page.cf-attr { height: auto; }
+.print-layout.orient-portrait .cf-big { font-size: 23px; }
+.print-layout.orient-portrait .cf-box { gap: 8px; padding: 2mm 3mm; }
+.print-layout.orient-portrait .cf-sym svg { width: 36px; height: 36px; }
+.print-layout.orient-portrait .cf-nums { grid-template-columns: 1fr; gap: 2mm; }
+.print-layout.orient-portrait .cf-num-list { grid-template-columns: repeat(6, auto); gap: 2px 6px; }
+.print-layout.orient-portrait .cf-num { font-size: 10px; }
+.print-layout.orient-portrait .cf-num b { font-size: 15px; }
+.print-layout.orient-portrait .cf-contacts { grid-template-columns: 1fr 1fr; gap: 2mm; }
+.print-layout.orient-portrait .cf-contacts .f-row { grid-template-columns: 7.5em 1fr; }
+.print-layout.orient-portrait .cf-field { grid-template-columns: 9.5em 1fr; }
+.print-layout.orient-portrait .cf-orgmap { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+.print-layout.orient-portrait .cf-legend-col .f-legend { flex-direction: row; flex-wrap: wrap; gap: 3px 12px; }
+.print-layout.orient-portrait .cf-legend-col > b { border-bottom: 0; padding: 0; }
+.print-layout.orient-portrait .f-inset { width: 62mm; }
+.print-layout.orient-portrait .f-inset.side { width: 95mm; }
