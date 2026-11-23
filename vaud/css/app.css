@@ -663,3 +663,14 @@ body.viewer #map { bottom: 0; }
 .print-layout.orient-portrait .cf-legend-col > b { border-bottom: 0; padding: 0; }
 .print-layout.orient-portrait .f-inset { width: 62mm; }
 .print-layout.orient-portrait .f-inset.side { width: 95mm; }
+
+/* Cadenas des cartes de la fiche */
+.cf-lock {
+  position: absolute; top: 8px; right: 46px; z-index: 600; min-height: 0; height: 34px; min-width: 34px; padding: 0 9px;
+  border: 1.5px solid #333; border-radius: 8px; background: #fff; font-size: 16px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.carte-libre .cf-lock { background: #1f9a3a; border-color: #1f9a3a; color: #fff; font-size: 13px; }
+.carte-libre #fiche-map, .carte-libre #org-map { outline: 3px solid #1f9a3a; outline-offset: -1px; }
+.f-mapwrap:not(.carte-libre) .leaflet-container { cursor: default; }
+.print-layout .cf-lock { display: none; }
+.print-layout .carte-libre #fiche-map, .print-layout .carte-libre #org-map { outline: 0; }

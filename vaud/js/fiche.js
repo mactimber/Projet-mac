@@ -530,6 +530,25 @@ export function renderFiche(root, chantier, opt) {
     root.querySelector('#org-recadrer').hidden = true;
     opt.onChange();
   });
+
+  // Cadenas : cartes verrouillées par défaut (on peut faire défiler la page sans les bouger)
+  [[ficheMap, '#fiche-map'], [orgMap, '#org-map']].forEach(([m, sel]) => {
+    const wrap = root.querySelector(sel).closest('.f-mapwrap');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cf-lock no-print';
+    wrap.appendChild(btn);
+    const verrouiller = (v) => {
+      ['dragging', 'scrollWheelZoom', 'touchZoom', 'doubleClickZoom', 'boxZoom', 'keyboard'].forEach((h) => m[h]?.[v ? 'disable' : 'enable']());
+      wrap.classList.toggle('carte-libre', !v);
+      btn.textContent = v ? '🔒' : '🔓 Réglage du plan';
+      btn.title = v ? 'Plan verrouillé : touchez pour régler le zoom et le cadrage' : 'Touchez pour verrouiller le plan';
+      btn.setAttribute('aria-label', btn.title);
+      btn.dataset.verrou = v ? '1' : '0';
+    };
+    verrouiller(true);
+    btn.addEventListener('click', () => verrouiller(btn.dataset.verrou !== '1'));
+  });
 }
 
 let orgMap = null;
