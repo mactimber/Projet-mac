@@ -61,17 +61,15 @@ const POINT_SVG = {
     <circle cx="31" cy="17.5" r="3.6" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
     <path d="M21.2 18.6L25.4 26.8" stroke="${RED}" stroke-width="2.6" stroke-linecap="round"/>`],
   // Roulotte de chantier (vue de dessus, beige)
-  roulotte: [56, 28, `<rect x="2" y="3" width="44" height="22" rx="2" fill="#efe3c8" stroke="#111" stroke-width="2"/>
-    <path d="M10 3V25M38 3V25" stroke="#8a7a5a" stroke-width="1.4"/><path d="M46 14H54" stroke="#111" stroke-width="2.4" stroke-linecap="round"/>`],
+  roulotte: [56, 26, `<rect x="2" y="2" width="52" height="22" rx="1.5" fill="#f7f1e3" stroke="#6b6b6b" stroke-width="2"/>
+    <path d="M2 2L18 13H38L54 2M2 24L18 13M54 24L38 13" fill="none" stroke="#9a9a9a" stroke-width="1.6"/>`],
   // Câble-grue mobile (camion avec mât)
-  cable_mobile: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#e8641e" stroke-width="2.5"/>
-    <rect x="7" y="23" width="20" height="6" rx="1" fill="#111"/><path d="M27 29V21h5l2.5 4v4z" fill="#111"/>
-    <circle cx="11.5" cy="31" r="2.3" fill="#111"/><circle cx="29.5" cy="31" r="2.3" fill="#111"/>
-    <path d="M12 23L17 7M17 7L33 14" stroke="#111" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M17 7L34 13" stroke="#e8641e" stroke-width="1.6" stroke-dasharray="3 2"/>`],
+  cable_mobile: [40, 40, `<rect x="4" y="14" width="13" height="13" rx="1.5" fill="#111" stroke="#fff" stroke-width="1.2"/>
+    <path d="M17 20.5L33 7M17 20.5H34M17 20.5L33 34" stroke="#111" stroke-width="1.8"/>
+    <circle cx="33.5" cy="7" r="3" fill="#111" stroke="#fff" stroke-width="1"/><circle cx="34.5" cy="20.5" r="3" fill="#111" stroke="#fff" stroke-width="1"/><circle cx="33.5" cy="34" r="3" fill="#111" stroke="#fff" stroke-width="1"/>`],
   // Support de câble-grue (chevalet)
-  cable_support: [40, 40, `<circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#e8641e" stroke-width="2.5"/>
-    <path d="M20 8L11 32M20 8L29 32M20 8V32" stroke="#111" stroke-width="2.6" stroke-linecap="round"/><circle cx="20" cy="8" r="3" fill="#e8641e" stroke="#111" stroke-width="1.2"/>`],
+  cable_support: [40, 40, `<path d="M20 7L9 34M20 7L31 34M20 7V30" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M20 7L9 34M20 7L31 34M20 7V30" stroke="#111" stroke-width="2.4" stroke-linecap="round"/><circle cx="20" cy="7" r="3" fill="#111"/>`],
   // Ancrage de câble-grue
   cable_ancrage: [40, 40, `<circle cx="20" cy="20" r="14" fill="#6d4c2f" stroke="#111" stroke-width="2.5"/><circle cx="20" cy="20" r="5" fill="none" stroke="#fff" stroke-width="2.4"/>`],
   // Arbre-habitat à conserver (feuillu, bande blanche « H »)
@@ -112,10 +110,10 @@ export const SYMBOLS = [
   { kind: 'circulation', group: 'Zones et lignes', label: 'Flèche (circulation)', mode: 'line', color: RED, weight: 4, arrowEnd: true, hint: 'Touchez les points du trajet, puis « Terminer ».' },
   { kind: 'distance', group: 'Zones et lignes', label: 'Distance (cote)', mode: 'line', maxPts: 2, color: '#f39200', weight: 3, arrowEnd: true, arrowStart: true, measure: true, hint: 'Touchez le début puis la fin de la mesure.' },
   // --- Logistique et accès
-  { kind: 'sortie_simple', group: 'Logistique et accès', label: 'Direction de sortie simple', mode: 'line', color: '#111', weight: 4, arrowEnd: true, hint: 'Touchez les points du trajet de sortie, puis « Terminer ».' },
-  { kind: 'sortie_double', group: 'Logistique et accès', label: 'Direction de sortie double', mode: 'line', color: '#111', weight: 4, arrowEnd: true, arrowStart: true, hint: 'Touchez les points du trajet, puis « Terminer ».' },
-  { kind: 'chemin_utilise', group: 'Logistique et accès', label: 'Chemin / piste utilisé', mode: 'line', color: '#4f6475', weight: 4, hint: 'Touchez les points du chemin, puis « Terminer ».' },
-  { kind: 'layon_debardage', group: 'Logistique et accès', label: 'Layon de débardage', mode: 'line', color: '#8d5a2b', weight: 4, dash: '9 6', hint: 'Touchez les points du layon, puis « Terminer ».' },
+  { kind: 'sortie_simple', group: 'Logistique et accès', label: 'Direction de sortie unique', mode: 'line', color: '#111', weight: 3, arrowEnd: true, hint: 'Touchez les points du trajet de sortie, puis « Terminer ».' },
+  { kind: 'sortie_double', group: 'Logistique et accès', label: 'Direction de sortie double', mode: 'line', color: '#111', weight: 3, arrowEnd: true, arrowStart: true, hint: 'Touchez les points du trajet, puis « Terminer ».' },
+  { kind: 'chemin_utilise', group: 'Logistique et accès', label: 'Chemin / piste utilisé', mode: 'line', color: '#4f6475', weight: 3, hint: 'Touchez les points du chemin, puis « Terminer ».' },
+  { kind: 'layon_debardage', group: 'Logistique et accès', label: 'Layon de débardage', mode: 'line', color: '#8d6e63', weight: 3, dash: '3 6', hint: 'Touchez les points du layon, puis « Terminer ».' },
   { kind: 'limite_vidange', group: 'Logistique et accès', label: 'Limite de vidange', mode: 'line', color: '#7b3fa0', weight: 3, dash: '6 5', hint: 'Touchez les points de la limite, puis « Terminer ».' },
   { kind: 'roulotte', group: 'Logistique et accès', label: 'Roulotte de chantier', mode: 'orient', askText: '', hint: 'Touchez l\'emplacement de la roulotte, puis tournez la poignée ⟳.' },
   // --- Câble-grue
@@ -174,7 +172,7 @@ export function symbolSvg(kind, height = 36) {
 
 /** Taille d'affichage sur la carte (hauteur en px). */
 export function mapHeight(kind) {
-  return { trois_lattes: 44, bache: 26, barriere: 22, helico: 26, vehicule: 30, pile: 28, depot: 14, roulotte: 22, cable_ancrage: 22, annotation: 24 }[kind] || 30;
+  return { trois_lattes: 44, bache: 26, barriere: 22, helico: 26, vehicule: 30, pile: 28, depot: 14, roulotte: 20, cable_ancrage: 22, cable_mobile: 28, annotation: 24 }[kind] || 30;
 }
 
 /** Tête de flèche pointant vers le haut. */
