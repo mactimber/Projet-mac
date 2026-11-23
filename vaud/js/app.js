@@ -718,8 +718,9 @@ map.on('click', (e) => {
     } else {
       s.angle = prev?.angle ?? (def.mode === 'orient' ? 90 : 0);
     }
-    if (def.mode === 'orient') {
-      const t = prompt('Texte à côté de la pile (facultatif, ex. BS ME, Déchi) :', '');
+    if (def.mode === 'orient' && def.askText !== undefined) {
+      const pile = ['pile', 'depot'].includes(def.kind);
+      const t = prompt(pile ? 'Texte à côté de la pile (facultatif, ex. BS ME, Déchi) :' : 'Texte à côté du symbole (facultatif) :', '');
       s.text = t || '';
     }
     chantier.symbols.push(s);

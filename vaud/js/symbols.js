@@ -118,7 +118,7 @@ export const SYMBOLS = [
   { kind: 'roulotte', group: 'Logistique et accès', label: 'Roulotte de chantier', mode: 'orient', askText: '', hint: 'Touchez l\'emplacement de la roulotte, puis tournez la poignée ⟳.' },
   // --- Câble-grue
   { kind: 'cable_ligne', group: 'Câble-grue', label: 'Ligne de câble-grue', mode: 'line', color: '#e8641e', weight: 3, dash: '10 5', hint: 'Touchez le départ, les supports, puis l\'arrivée ; « Terminer ».' },
-  { kind: 'cable_mobile', group: 'Câble-grue', label: 'Câble-grue mobile', mode: 'point', hint: 'Touchez l\'emplacement du câble-grue mobile.' },
+  { kind: 'cable_mobile', group: 'Câble-grue', label: 'Câble-grue mobile', mode: 'orient', hint: 'Touchez l\'emplacement du câble-grue mobile, puis tournez la poignée ⟳ vers la ligne.' },
   { kind: 'cable_support', group: 'Câble-grue', label: 'Support', mode: 'point', hint: 'Touchez l\'emplacement du support.' },
   { kind: 'cable_ancrage', group: 'Câble-grue', label: 'Ancrage', mode: 'point', hint: 'Touchez l\'emplacement de l\'ancrage.' },
   // --- Nature et notes
@@ -172,7 +172,7 @@ export function symbolSvg(kind, height = 36) {
 
 /** Taille d'affichage sur la carte (hauteur en px). */
 export function mapHeight(kind) {
-  return { trois_lattes: 44, bache: 26, barriere: 22, helico: 26, vehicule: 30, pile: 28, depot: 14, roulotte: 20, cable_ancrage: 22, cable_mobile: 28, annotation: 24 }[kind] || 30;
+  return { trois_lattes: 44, bache: 26, barriere: 22, helico: 26, vehicule: 30, pile: 28, depot: 14, roulotte: 20, cable_ancrage: 22, cable_mobile: 44, annotation: 24 }[kind] || 30;
 }
 
 /** Tête de flèche pointant vers le haut. */
