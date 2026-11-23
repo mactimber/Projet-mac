@@ -1,7 +1,10 @@
 // Fiche de secours : affichée sur le téléphone et imprimable en A4 (PDF).
 
 import { SYMBOLS, SYMBOL_BY_KIND, symbolSvg } from './symbols.js';
-import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
+import { symbolLayer, esc, bearing, PARCEL_STYLE_OUTLINE } from './draw.js';
+
+/** Périmètre de coupe sur les plans de la fiche : rempli de rouge, bien visible (comme le plan CFPF). */
+const PARCEL_FICHE = { color: '#d62d20', weight: 2.5, fillColor: '#e8573f', fillOpacity: 0.38 };
 import { wgs84ToLV95, formatLV95 } from './swiss.js';
 import { planLink, qrSvg } from './share.js';
 
@@ -168,7 +171,7 @@ export function renderFiche(root, chantier, opt) {
   const kindsSec = SYMBOLS.filter((d) => estSecours(d.kind) && chantier.symbols.some((s) => s.kind === d.kind) && d.kind !== 'texte');
   const kindsOrg = SYMBOLS.filter((d) => estOrga(d.kind) && chantier.symbols.some((s) => s.kind === d.kind) && !['texte', 'zone'].includes(d.kind));
   const zonesSansNom = chantier.symbols.some((s) => s.kind === 'zone' && !s.text);
-  const legende = (list, extra = '') => `${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
+  const legende = (list, extra = '') => `${chantier.parcel ? '<span><i class="lg-parcel"></i>Périmètre de coupe</span>' : ''}
     ${list.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}${extra}`;
   const coordsGrand = (s) => {
     if (!s) return '<span class="missing">à placer sur la carte (étape 2)</span>';
@@ -450,7 +453,7 @@ export function renderFiche(root, chantier, opt) {
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(m);
     if (chantier.parcel) {
       L.polygon(chantier.parcel, PARCEL_STYLE_OUTLINE).addTo(m);
-      L.polygon(chantier.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(m);
+      L.polygon(chantier.parcel, { ...PARCEL_FICHE, interactive: false }).addTo(m);
     }
     return m;
   };
@@ -747,7 +750,7 @@ function updateTInset(chantier) {
       doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false, tap: false,
     });
     ficheOpt.makeBaseLayer().addTo(insetMap);
-    if (chantier.parcel) L.polygon(chantier.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(insetMap);
+    if (chantier.parcel) L.polygon(chantier.parcel, { ...PARCEL_FICHE, interactive: false }).addTo(insetMap);
   }
   if (insetMap._acces) insetMap._acces.remove();
   insetMap._acces = acces ? symbolLayer(acces, { interactive: false })?.addTo(insetMap) : null;

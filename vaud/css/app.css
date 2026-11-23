@@ -626,3 +626,13 @@ body.viewer #map { bottom: 0; }
 }
 /* téléphone : la feuille des symboles ne dépasse pas ~45 % de l'écran (on fait défiler les symboles) */
 @media (max-width: 899px) { .sheet:has(.palette) { max-height: 45%; } .sheet.reduit { max-height: none; } }
+/* Plans de la fiche plus lisibles (comme le plan CFPF) */
+.cf-page .lg-parcel { width: 22px; height: 14px; border: 2px solid #d62d20; background: rgba(232, 87, 63, .38); outline: 0; border-radius: 2px; }
+.cf-field > span { font-weight: 400; color: #555; }
+.cf-field input, .cf-val, .cf-period input { font-weight: 700; color: #111; }
+.cf-field input::placeholder, .cf-period input::placeholder { font-weight: 400; color: #aaa; }
+.cf-legend-col > b { display: block; font-size: 14px; color: #1f4d2b; border-bottom: 1.5px solid #ccc; padding-bottom: 3px; }
+.cf-legend-col .f-legend { gap: 7px; font-size: 12.5px; }
+.cf-head { border-bottom-color: #1f4d2b; }
+.cf-titre { color: #1f4d2b; }
+.print-layout .cf-legend-col .f-legend { gap: 5px; font-size: 11px; }
