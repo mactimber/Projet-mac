@@ -345,7 +345,7 @@ function symbolPopup(s, latlng) {
   div.innerHTML = `<div class="sp-head">${symbolSvg(s.kind, 26)} <b>${esc(def.label)}</b></div>
     ${movable ? `<div class="sp-coord">${formatLV95(s.lat, s.lng)}${s.alt ? ` · ${Math.round(s.alt)} m` : ''}</div>` : ''}
     ${s.kind === 'heli' && s.manual && chantier.parcel ? '<button type="button" data-a="center">Remettre au milieu de la parcelle</button>' : ''}
-    ${def.mode === 'wedge' || def.mode === 'orient' ? '<button type="button" data-a="rotate">Changer la direction</button>' : ''}
+    ${ROTATIFS.includes(def.mode) ? '<button type="button" data-a="rotate">Changer la direction</button>' : ''}
     ${(def.mode === 'point' || def.mode === 'orient') && !def.coordLabel ? `<button type="button" data-a="text">${s.text ? 'Modifier le texte' : 'Ajouter un texte'}</button>` : ''}
     ${def.mode === 'zone' ? `<div class="sp-coord">${esc(s.text || '')} · ${formatArea(polygonArea(L.polygon(s.pts))).split(' (')[0]}</div><button type="button" data-a="text">Renommer</button><button type="button" data-a="color">Changer la couleur</button>` : ''}
     ${movable ? '<p class="sp-hint">Pour déplacer : glissez le symbole.</p>' : ''}
@@ -369,19 +369,11 @@ function symbolPopup(s, latlng) {
   });
   div.querySelector('[data-a=rotate]')?.addEventListener('click', () => {
     map.closePopup(pop);
-    if (def.mode === 'wedge') {
-      $('#sheet').hidden = true;
-      showRotate(s);
-      hint('Tournez la poignée ⟳ autour de l\'arbre pour la direction de chute.', () => { hideRotate(); hideHint(); });
-      return;
-    }
-    rotating = s;
     $('#sheet').hidden = true;
-    hint(def.mode === 'wedge' ? 'Touchez la direction de chute.' : 'Touchez la direction de la longueur.', () => { rotating = null; hideHint(); });
+    showRotate(s);
+    hint(ROT_HINT[def.mode], () => { hideRotate(); hideHint(); });
   });
 }
-
-let rotating = null;
 
 /** Place automatiquement l'hélico au milieu de la parcelle (sauf si déplacé à la main). */
 function autoHeli(c) {
@@ -553,10 +545,40 @@ function setParcel(ring) {
 let placing = null; // { kind, first?, pts? }
 const tempGroup = L.layerGroup().addTo(map);
 
-/* Direction d'abattage : poignée ⟳ à faire tourner autour de l'arbre avec le doigt */
+/*
+ * Symboles orientables (directions d'abattage, piles, début du travail) :
+ * un toucher pose le symbole, puis une poignée ⟳ se fait glisser avec le doigt.
+ *  - triangle et pile : la poignée tourne sur un cercle autour du symbole ;
+ *  - flèche « début du travail » : la poignée est la pointe de la flèche (direction et longueur).
+ */
+const ROTATIFS = ['wedge', 'orient', 'arrow'];
+const ROT_HINT = {
+  wedge: 'Tournez la poignée ⟳ autour de l\'arbre pour la direction de chute.',
+  orient: 'Tournez la poignée ⟳ pour le sens de la pile.',
+  arrow: 'Glissez la poignée ⟳ (pointe de la flèche) dans la direction du travail.',
+};
+const ROT_SUIVANT = {
+  wedge: 'Arbre suivant : touchez la carte, ou « Terminer ».',
+  orient: 'Pile suivante : touchez la carte, ou « Terminer ».',
+  arrow: 'Ou touchez la carte pour une autre flèche, puis « Terminer ».',
+};
 const rotGroup = L.layerGroup().addTo(map);
 let rotSel = null;
 const ROT_R = 58; // rayon du cercle de rotation (px)
+/** Redessine un seul symbole pendant qu'on le tourne (sans tout redessiner). */
+function refreshLayer(s) {
+  const old = layerById.get(s.id);
+  if (old?.setIcon && SYMBOL_BY_KIND[s.kind].mode !== 'arrow') {
+    old.setIcon(symbolLayer(s).options.icon);
+    return;
+  }
+  if (old) symbolGroup.removeLayer(old);
+  const l = symbolLayer(s, { interactive: false });
+  if (l) {
+    l.addTo(symbolGroup);
+    layerById.set(s.id, l);
+  }
+}
 function showRotate(s) {
   rotSel = s;
   drawRotate();
@@ -569,21 +591,31 @@ function drawRotate() {
   rotGroup.clearLayers();
   const s = rotSel;
   if (!s || !chantier?.symbols.includes(s)) { rotSel = null; return; }
-  const c = map.latLngToContainerPoint([s.lat, s.lng]);
-  const a = ((s.angle || 0) * Math.PI) / 180;
-  const pos = map.containerPointToLatLng([c.x + ROT_R * Math.sin(a), c.y - ROT_R * Math.cos(a)]);
-  L.circleMarker([s.lat, s.lng], { radius: ROT_R, color: '#1f9a3a', weight: 2, dashArray: '4 6', fill: false, interactive: false }).addTo(rotGroup);
+  const fleche = SYMBOL_BY_KIND[s.kind]?.mode === 'arrow';
+  let pos;
+  if (fleche) {
+    pos = L.latLng(s.lat2, s.lng2);
+  } else {
+    const c = map.latLngToContainerPoint([s.lat, s.lng]);
+    const a = ((s.angle || 0) * Math.PI) / 180;
+    pos = map.containerPointToLatLng([c.x + ROT_R * Math.sin(a), c.y - ROT_R * Math.cos(a)]);
+    L.circleMarker([s.lat, s.lng], { radius: ROT_R, color: '#1f9a3a', weight: 2, dashArray: '4 6', fill: false, interactive: false }).addTo(rotGroup);
+  }
   const h = L.marker(pos, {
     draggable: true, zIndexOffset: 3000, keyboard: false,
     icon: L.divIcon({ className: 'rot-handle', html: '<div>⟳</div>', iconSize: [44, 44], iconAnchor: [22, 22] }),
   }).addTo(rotGroup);
   h.on('drag', () => {
-    s.angle = bearing([s.lat, s.lng], h.getLatLng());
-    layerById.get(s.id)?.setIcon(symbolLayer(s).options.icon);
+    const ll = h.getLatLng();
+    if (fleche) {
+      s.lat2 = ll.lat;
+      s.lng2 = ll.lng;
+    } else s.angle = bearing([s.lat, s.lng], ll);
+    refreshLayer(s);
   });
   h.on('dragend', () => {
     save();
-    drawRotate(); // la poignée revient sur le cercle
+    drawSymbols(); // symboles de nouveau cliquables ; la poignée revient sur le cercle
   });
   h.on('click', (e) => L.DomEvent.stop(e));
 }
@@ -663,58 +695,35 @@ function finishZone() {
 
 map.on('click', (e) => {
   const ll = e.latlng;
-  if (rotating) {
-    rotating.angle = bearing([rotating.lat, rotating.lng], ll);
-    rotating = null;
-    hideHint();
-    drawSymbols();
-    save();
-    return;
-  }
   if (!placing) {
     if (rotSel) { hideRotate(); hideHint(); }
     return;
   }
   const def = SYMBOL_BY_KIND[placing.kind];
 
-  if (def.mode === 'wedge') {
-    // Un toucher pose l'arbre (même direction que le précédent) ; la poignée ⟳ permet de l'orienter
+  if (ROTATIFS.includes(def.mode)) {
+    // Un toucher pose le symbole (même direction que le précédent du même genre) ; la poignée ⟳ l'oriente
     const prev = [...chantier.symbols].reverse().find((x) => x.kind === def.kind);
-    const s = { id: uid(), kind: def.kind, lat: ll.lat, lng: ll.lng, angle: prev?.angle ?? 0 };
+    const s = { id: uid(), kind: def.kind, lat: ll.lat, lng: ll.lng };
+    if (def.mode === 'arrow') {
+      const cap = prev ? bearing([prev.lat, prev.lng], [prev.lat2, prev.lng2]) : 45;
+      const c = map.latLngToContainerPoint(ll);
+      const a = (cap * Math.PI) / 180;
+      const bout = map.containerPointToLatLng([c.x + 60 * Math.sin(a), c.y - 60 * Math.cos(a)]);
+      s.lat2 = bout.lat;
+      s.lng2 = bout.lng;
+    } else {
+      s.angle = prev?.angle ?? (def.mode === 'orient' ? 90 : 0);
+    }
+    if (def.mode === 'orient') {
+      const t = prompt('Texte à côté de la pile (facultatif, ex. BS ME, Déchi) :', '');
+      s.text = t || '';
+    }
     chantier.symbols.push(s);
     rotSel = s;
     drawSymbols();
     save();
-    $('#hint-text').textContent = 'Tournez la poignée ⟳ pour la direction de chute. Arbre suivant : touchez la carte, ou « Terminer ».';
-    return;
-  }
-
-  if (def.mode === 'wedge' || def.mode === 'arrow' || def.mode === 'orient') {
-    if (!placing.first) {
-      placing.first = ll;
-      L.circleMarker(ll, { radius: 7, color: '#111', fillColor: def.color || '#1f9a3a', fillOpacity: 0.8 }).addTo(tempGroup);
-      $('#hint-text').textContent = { wedge: 'Touchez maintenant la direction de chute.', arrow: 'Touchez maintenant la direction du travail.', orient: 'Touchez maintenant dans quel sens la pile est allongée.' }[def.mode];
-      return;
-    }
-    const a = placing.first;
-    if (def.mode === 'orient') {
-      const t = prompt('Texte à côté de la pile (facultatif, ex. BS ME, Déchi) :', '');
-      chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, angle: bearing(a, ll), text: t || '' });
-      placing.first = null;
-      tempGroup.clearLayers();
-      drawSymbols();
-      save();
-      $('#hint-text').textContent = 'Pile suivante : touchez la pile, puis le sens.';
-      return;
-    }
-    if (def.mode === 'wedge') chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, angle: bearing(a, ll) });
-    else chantier.symbols.push({ id: uid(), kind: def.kind, lat: a.lat, lng: a.lng, lat2: ll.lat, lng2: ll.lng });
-    placing.first = null;
-    tempGroup.clearLayers();
-    drawSymbols();
-    save();
-    if (def.mode === 'arrow') return backToPalette();
-    $('#hint-text').textContent = 'Arbre suivant : touchez l\'arbre, puis la direction.';
+    $('#hint-text').textContent = `${ROT_HINT[def.mode]} ${ROT_SUIVANT[def.mode]}`;
     return;
   }
 
