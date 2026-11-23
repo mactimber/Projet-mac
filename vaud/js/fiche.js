@@ -343,7 +343,7 @@ export function renderFiche(root, chantier, opt) {
         <div class="ff"><span>Dangers particuliers</span>
           <div class="f-checks">${DANGERS.map((d) => `<label><input type="checkbox" data-danger="${esc(d)}" ${coches.has(d) ? 'checked' : ''}> ${esc(d)}</label>`).join('')}</div>
         </div>
-        ${field('dangers_texte', 'Précisions sur les dangers', { multi: true, ph: 'ex. conduite de gaz le long du chemin, bâtiment à 15 m…' })}
+        ${field('dangers_texte', 'Remarques', { multi: true, ph: 'ex. conduite de gaz le long du chemin, bâtiment à 15 m…' })}
       </div>
     </section>
     <footer class="cf-foot"><span></span><span>Établi le ${etabli} · Page 3/3</span></footer>
