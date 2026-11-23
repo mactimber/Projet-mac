@@ -154,15 +154,21 @@ export function renderFiche(root, chantier, opt) {
   const zones = chantier.symbols.filter((s) => s.kind === 'zone' && s.text);
   const legendIcon = (d) => symbolSvg(d.kind, d.mode === 'point' && !['heli', 'point_t'].includes(d.kind) ? 20 : 18);
 
-  const DANGERS = ['Chute de hauteur', 'Chute de pierres', 'Bois mort', 'Ligne électrique', 'Route, trafic', 'Tiers (promeneurs…)', 'Pas de réseau mobile', 'Pente raide', 'Autres'];
+  const DANGERS = ['Chute de hauteur', 'Chute de pierres', 'Bois mort', 'Ligne électrique', 'Route, trafic', 'Tiers (promeneurs…)', 'Pas de réseau mobile', 'Pente raide', 'Infrastructure (bâtiments, conduites…)', 'Autres'];
   if (info.mesures === undefined && typeof info.dangers === 'string') info.mesures = info.dangers; // ancienne case « Dangers et mesures »
   const coches = new Set(Array.isArray(info.dangers_coches) ? info.dangers_coches : []);
   const T = sym('point_t')[0];
   // Case remplie depuis la carte (lieu-dit, commune, adresse) tant qu'on ne l'a pas modifiée soi-même
+  // Point T : jamais d'adresse de bâtiment automatique (souvent fausse pour un point de rencontre) :
+  // seulement lieu-dit et commune ; l'adresse vérifiée sur place s'écrit à la main.
+  const lieuAuto = (key, point) => {
+    const p = point?.place || '';
+    return key === 'localite_t' ? p.split(' – ')[0] : p;
+  };
   const placeRow = (key, label, point, ph) => `
     <div class="f-row f-row-stack"><span>${label}</span><div class="f-auto">
-      <textarea data-key="${key}" rows="1" placeholder="${esc(ph)}">${esc(info[key] ?? point?.place ?? point?.text ?? '')}</textarea>
-      ${point?.place ? `<button type="button" class="f-refresh no-print" data-refresh="${key}" data-place="${esc(point.place)}" title="Reprendre depuis la carte" aria-label="Reprendre depuis la carte">↻</button>` : ''}
+      <textarea data-key="${key}" rows="1" placeholder="${esc(ph)}">${esc(info[key] ?? (lieuAuto(key, point) || point?.text || ''))}</textarea>
+      ${point?.place ? `<button type="button" class="f-refresh no-print" data-refresh="${key}" data-place="${esc(lieuAuto(key, point))}" title="Reprendre depuis la carte (lieu-dit, commune)" aria-label="Reprendre depuis la carte">↻</button>` : ''}
     </div></div>`;
 
   const extras = opt.extraLayers ? opt.extraLayers() : [];
@@ -223,7 +229,8 @@ export function renderFiche(root, chantier, opt) {
         <div class="cf-box-c">
           <div class="cf-box-t">COORDONNÉES T</div>
           ${coordsGrand(T)}
-          ${placeRow('localite_t', 'Lieu / adresse', T, 'ex. Parking du Chalet-à-Gobet')}
+          ${placeRow('localite_t', 'Lieu / adresse', T, 'Adresse vérifiée sur place, ex. Parking du Chalet-à-Gobet')}
+          <p class="cf-avert no-print">⚠ L'application ne donne que le lieu-dit et la commune. Écrivez l'adresse <b>vérifiée sur place</b> (accès de l'ambulance) : ne recopiez pas une adresse de carte en ligne sans la contrôler.</p>
         </div>
       </div>
     </section>
@@ -337,6 +344,7 @@ export function renderFiche(root, chantier, opt) {
         <div class="ff"><span>Dangers particuliers</span>
           <div class="f-checks">${DANGERS.map((d) => `<label><input type="checkbox" data-danger="${esc(d)}" ${coches.has(d) ? 'checked' : ''}> ${esc(d)}</label>`).join('')}</div>
         </div>
+        ${field('dangers_texte', 'Précisions sur les dangers', { multi: true, ph: 'ex. conduite de gaz le long du chemin, bâtiment à 15 m…' })}
       </div>
     </section>
     <footer class="cf-foot"><span></span><span>Établi le ${etabli} · Page 3/3</span></footer>
@@ -477,7 +485,9 @@ export function renderFiche(root, chantier, opt) {
     return m;
   };
   if (ficheMap) ficheMap.remove();
+  ficheMap = null;
   if (orgMap) orgMap.remove();
+  orgMap = null; // l’échelle ne doit plus lire une carte supprimée
   if (insetMap) insetMap.remove();
   insetMap = null;
   ficheOpt = opt;

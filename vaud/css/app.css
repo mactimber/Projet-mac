@@ -754,3 +754,21 @@ body.viewer #map { bottom: 0; }
 .print-layout .cf-under .f-legend { font-size: 8.5px; gap: 0 7px; }
 .print-layout .cf-under .f-legend svg { height: 11px; }
 .print-layout .cf-foot { margin-top: 1mm; padding-top: 1mm; font-size: 9.5px; }
+/* Avertissement : adresse du point T à vérifier sur place */
+.cf-avert { margin: 3px 0 0; font-size: 11px; line-height: 1.3; color: #8a4b00; background: #fff4e0; border-left: 3px solid #f39200; padding: 3px 6px; border-radius: 3px; }
+
+/* Police étroite pour les coordonnées H / T (IBM Plex Sans Condensed, licence SIL OFL, incluse pour le hors-ligne) */
+@font-face { font-family: 'PlexCond'; font-weight: 600; font-display: swap; src: url('../vendor/fonts/ibm-plex-sans-condensed-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'PlexCond'; font-weight: 700; font-display: swap; src: url('../vendor/fonts/ibm-plex-sans-condensed-latin-700-normal.woff2') format('woff2'); }
+.cf-big { font-family: 'PlexCond', 'Arial Narrow', Arial, sans-serif; font-weight: 700; letter-spacing: 0; font-size: min(38px, 9.4cqi); }
+.cf-box-t { font-family: 'PlexCond', Arial, sans-serif; font-weight: 700; letter-spacing: .04em; }
+.cf-t .f-auto textarea { font-family: 'PlexCond', Arial, sans-serif; font-weight: 600; }
+.print-layout .cf-big { font-size: min(34px, 9.4cqi); }
+/* Portrait : H et T restent côte à côte (police étroite = grands chiffres qui tiennent) */
+.orient-portrait .cf-coords, .print-layout.orient-portrait .cf-coords { grid-template-columns: 1fr 1fr; gap: 2.5mm; }
+.print-layout.orient-portrait .cf-big { font-size: min(30px, 9.4cqi); }
+.print-layout.orient-portrait .cf-sym svg { width: 30px; height: 30px; }
+.print-layout.orient-portrait .cf-box { gap: 6px; padding: 1.5mm 3mm; }
+@media (max-width: 700px) { .cf-big { font-size: min(32px, 9.4cqi); } }
+/* Téléphone : à l'écran, H et T toujours l'un sous l'autre (le PDF portrait garde les deux côte à côte) */
+@media (max-width: 700px) { #fiche:not(.print-layout) .cf-coords { grid-template-columns: 1fr; } }

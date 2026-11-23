@@ -1,6 +1,6 @@
 // Service worker : application disponible hors-ligne + cache des tuiles cartographiques.
 
-const APP_CACHE = 'vd-app-v21';
+const APP_CACHE = 'vd-app-v24';
 const TILE_CACHE = 'vd-tiles-v1';
 const MAX_RUNTIME_TILES = 6000;
 
@@ -16,6 +16,8 @@ const APP_FILES = [
   'js/place.js',
   'js/share.js',
   'vendor/qrcode/qrcode.js',
+  'vendor/fonts/ibm-plex-sans-condensed-latin-600-normal.woff2',
+  'vendor/fonts/ibm-plex-sans-condensed-latin-700-normal.woff2',
   'js/swiss.js',
   'js/symbols.js',
   'vendor/leaflet/leaflet.js',

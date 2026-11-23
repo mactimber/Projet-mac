@@ -399,7 +399,8 @@ async function fetchPlace(s) {
   const pos = `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`;
   s.placeFor = pos;
   try {
-    const p = await lookupPlace(s.lat, s.lng, { adresse: s.kind === 'point_t' });
+    // Pas d'adresse de bâtiment automatique (souvent fausse pour un point de rencontre) : lieu-dit et commune seulement
+    const p = await lookupPlace(s.lat, s.lng);
     if (s.placeFor !== pos) return; // le point a bougé entre-temps
     if (p.label) {
       s.place = p.label;

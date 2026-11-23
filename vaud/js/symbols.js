@@ -83,8 +83,8 @@ export const SYMBOLS = [
   { kind: 'debut_jaune', group: 'Coupe', label: 'Début du travail (jaune)', mode: 'arrow', color: '#f7d000', hint: 'Touchez le départ, puis glissez la poignée ⟳ dans la direction du travail.' },
   { kind: 'nacelle', group: 'Coupe', label: 'Nacelle', mode: 'point', hint: 'Touchez l\'emplacement de la nacelle.' },
   { kind: 'camion_grue', group: 'Coupe', label: 'Camion-grue', mode: 'point', hint: 'Touchez l\'emplacement du camion-grue.' },
-  { kind: 'pile', group: 'Coupe', label: 'Pile de bois', mode: 'orient', askText: '', hint: 'Touchez la pile, puis tournez la poignée ⟳ pour son sens.' },
-  { kind: 'depot', group: 'Coupe', label: 'Pile longue (BF, déchi)', mode: 'orient', askText: '', hint: 'Touchez la pile, puis tournez la poignée ⟳ pour son sens.' },
+  { kind: 'pile', group: 'Coupe', label: 'Pile de bois de service', mode: 'orient', askText: '', hint: 'Touchez la pile, puis tournez la poignée ⟳ pour son sens.' },
+  { kind: 'depot', group: 'Coupe', label: 'Pile de bois énergie', mode: 'orient', askText: '', hint: 'Touchez la pile, puis tournez la poignée ⟳ pour son sens.' },
   // --- Lignes
   { kind: 'zone', group: 'Zones et lignes', label: 'Zone (à nommer)', mode: 'zone', hint: 'Touchez les coins de la zone, puis « Terminer ».' },
   { kind: 'layon', group: 'Zones et lignes', label: 'Layon', mode: 'line', maxPts: 2, color: '#1f5f8b', weight: 6, hint: 'Touchez le début puis la fin du layon.' },
