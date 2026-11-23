@@ -674,3 +674,16 @@ body.viewer #map { bottom: 0; }
 .f-mapwrap:not(.carte-libre) .leaflet-container { cursor: default; }
 .print-layout .cf-lock { display: none; }
 .print-layout .carte-libre #fiche-map, .print-layout .carte-libre #org-map { outline: 0; }
+
+/* Coordonnées H / T : la taille s'adapte à la largeur de l'encadré (portrait, téléphone, impression) */
+.cf-box-c { container-type: inline-size; }
+.cf-big { font-size: min(34px, 7.6cqi); white-space: nowrap; }
+.print-layout .cf-big { font-size: min(31px, 7.6cqi); }
+.print-layout.orient-portrait .cf-big { font-size: min(24px, 7.6cqi); }
+@media (max-width: 700px) { .cf-big { font-size: min(26px, 7.6cqi); } }
+.cf-t .f-refresh { align-self: flex-start; height: 30px; }
+/* Portrait : encadrés H et T l'un sous l'autre, sur toute la largeur (grands chiffres) */
+.orient-portrait .cf-coords, .print-layout.orient-portrait .cf-coords { grid-template-columns: 1fr; gap: 6px; }
+.print-layout.orient-portrait .cf-big { font-size: min(30px, 7.6cqi); }
+.print-layout.orient-portrait .cf-coords { gap: 2mm; }
+.print-layout.orient-portrait .cf-box { padding: 1.5mm 4mm; }
