@@ -777,3 +777,23 @@ body.viewer #map { bottom: 0; }
 .icon-btn.icon-histo { min-width: 36px; font-size: 22px; font-weight: 700; }
 .icon-btn.icon-histo:disabled { opacity: .35; }
 @media (max-width: 420px) { .icon-btn.icon-histo { min-width: 30px; font-size: 20px; } }
+
+/* Fiche : tout le contenu d'une carte est coupé au bord de son cadre (lignes, symboles, étiquettes) */
+.cf-page .f-mapwrap { overflow: hidden; clip-path: inset(0); }
+.cf-page .leaflet-container { overflow: hidden !important; }
+@media print {
+  .cf-page .f-mapwrap { overflow: hidden !important; clip-path: inset(0); }
+  .cf-page .leaflet-container { overflow: hidden !important; }
+}
+
+/* Chaque page tient sur une A4, même avec les marges par défaut de Chrome / Edge (~10 mm) */
+.print-layout .page.cf-page { width: 270mm; height: 182mm; margin: 0 auto; }
+.print-layout.orient-portrait .page.cf-page { width: 186mm; height: 268mm; }
+.print-layout .page.cf-attr, .print-layout.orient-portrait .page.cf-attr { height: auto; }
+
+/* Dates à l'impression : texte simple jj.mm.aaaa, sans icône ni cadre */
+.date-print { display: none; }
+.print-layout input[type=date] { display: none !important; }
+.print-layout .date-print { display: inline-block; font-weight: 700; font-size: 12.5px; padding: 2px 0; min-height: 1.2em; }
+.print-layout .date-print:empty { min-width: 26mm; border-bottom: 1px dotted #999; }
+.print-layout .cf-period { gap: 6px; }

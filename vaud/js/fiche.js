@@ -177,8 +177,8 @@ export function renderFiche(root, chantier, opt) {
   const kindsSec = SYMBOLS.filter((d) => estSecours(d.kind) && chantier.symbols.some((s) => s.kind === d.kind) && d.kind !== 'texte');
   const kindsOrg = SYMBOLS.filter((d) => estOrga(d.kind) && chantier.symbols.some((s) => s.kind === d.kind) && !['texte', 'zone'].includes(d.kind));
   const zonesSansNom = chantier.symbols.some((s) => s.kind === 'zone' && !s.text);
-  const legende = (list, extra = '') => `${chantier.parcel ? '<span><i class="lg-parcel"></i>Périmètre de coupe</span>' : ''}
-    ${list.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}${extra}`;
+  const legende = (list, extra = '', libelles = {}) => `${chantier.parcel ? '<span><i class="lg-parcel"></i>Périmètre de coupe</span>' : ''}
+    ${list.map((d) => `<span>${legendIcon(d)}${esc(libelles[d.kind] || d.label)}</span>`).join('')}${extra}`;
   const coordsGrand = (s) => {
     if (!s) return '<span class="missing">à placer sur la carte (étape 2)</span>';
     const { E, N } = wgs84ToLV95(s.lat, s.lng);
@@ -288,7 +288,7 @@ export function renderFiche(root, chantier, opt) {
       </div>
       <aside class="cf-legend-col">
         <b>Légende</b>
-        <div class="f-legend">${legende(kindsOrg, `${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}${zonesSansNom ? `<span>${symbolSvg('zone', 18)}Zone</span>` : ''}`)}</div>
+        <div class="f-legend">${legende(kindsOrg, `${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}${zonesSansNom ? `<span>${symbolSvg('zone', 18)}Zone</span>` : ''}`, { heli: 'Coordonnées H (centre du chantier)' })}</div>
       </aside>
     </section>
     <footer class="cf-foot"><span id="org-ratio">Échelle ≈ 1:… (A4, impression à 100 %)</span><span>Établi le ${etabli} · Page 2/3</span></footer>
@@ -811,7 +811,17 @@ export function printFiche(root, chantier) {
   }
   st.textContent = `@media print { @page { size: A4 ${chantier.ficheOrient === 'portrait' ? 'portrait' : 'landscape'}; margin: 8mm; } }`;
   root.classList.add('print-layout');
-  root.querySelectorAll('input[type=date]').forEach((d) => d.classList.toggle('is-empty', !d.value));
+  root.querySelectorAll('input[type=date]').forEach((d) => {
+    d.classList.toggle('is-empty', !d.value);
+    // à l'impression : la date en texte simple jj.mm.aaaa (sans icône calendrier ni cadre)
+    let t = d.nextElementSibling;
+    if (!t?.classList.contains('date-print')) {
+      t = document.createElement('span');
+      t.className = 'date-print';
+      d.after(t);
+    }
+    t.textContent = d.value ? d.value.split('-').reverse().join('.') : '';
+  });
   root.querySelectorAll('textarea').forEach((t) => { t.style.height = 'auto'; t.style.height = `${t.scrollHeight + 2}px`; });
   fitFicheMap(chantier);
   fitOrgMap(chantier);
