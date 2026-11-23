@@ -2,7 +2,7 @@
 
 import { SYMBOLS, SYMBOL_BY_KIND, symbolSvg } from './symbols.js';
 import { symbolLayer, esc, bearing, PARCEL_STYLE, PARCEL_STYLE_OUTLINE } from './draw.js';
-import { wgs84ToLV95, formatLV95, polygonArea, formatArea } from './swiss.js';
+import { wgs84ToLV95, formatLV95 } from './swiss.js';
 import { planLink, qrSvg } from './share.js';
 
 /** Contacts par défaut – version vaudoise. */
@@ -36,22 +36,29 @@ function parseResponsables(text) {
   }).filter((r) => r.nom);
 }
 
-const NUMEROS = [
-  ['144', 'Ambulance'],
-  ['1414', 'Rega'],
-  ['112', 'Urgence'],
-  ['118', 'Pompiers'],
-  ['117', 'Police'],
-  ['145', 'Tox Info'],
+/* Numéros d'urgence du plan de secours, avec petits pictogrammes */
+const PICTO = (body, fond = '#fff') => `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="${fond}" stroke="#111" stroke-width="1.5"/>${body}</svg>`;
+const NUMS_SECOURS = [
+  ['144', 'Ambulance', PICTO('<path d="M10 5h4v5h5v4h-5v5h-4v-5H5v-4h5z" fill="#fff"/>', '#e31e24')],
+  ['117', 'Police', PICTO('<path d="M12 4.5l6 2.2v4.6c0 4-2.6 6.6-6 7.9-3.4-1.3-6-3.9-6-7.9V6.7z" fill="#fff"/>', '#1e4fa3')],
+  ['118', 'Pompiers', PICTO('<path d="M12 4c1 3.2 4.6 5 4.6 9a4.6 4.6 0 0 1-9.2 0c0-2 1-3.3 2-4.4.2 1.4.9 2.3 1.8 2.6-.6-2.4.1-5 .8-7.2z" fill="#fff"/>', '#e85d04')],
+  ['1414', 'Rega', PICTO('<path d="M5 8.5h11v1.4H5zM10 9.9h1.4v2.2H10zM7.5 13.5c0-1.4 1.4-2 3.3-2s3.7.5 3.7 2-1.6 2.3-3.5 2.3-3.5-.8-3.5-2.3zM14.4 13h4.6v1.2h-4.6zM18.4 11.5h1.2v4h-1.2zM8 16.8h6.5v1H8z" fill="#fff"/>', '#b71c1c')],
+  ['145', 'Tox Info', PICTO('<path d="M10 4.5h4v2.5l2 2.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 8 18V9.5l2-2.5z" fill="#fff"/><path d="M10.5 12.5h3M12 11v3" stroke="#2e7d32" stroke-width="1.6"/>', '#2e7d32')],
+  ['112', 'Urgence', PICTO('<path d="M8.6 5.5l2 3-1.4 1.4a8 8 0 0 0 4.4 4.4l1.4-1.4 3 2-1.2 2.4c-5.2.4-10.7-5.1-10.3-10.3z" fill="#fff"/>', '#444')],
 ];
 
-const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '’');
-
-function coordBlock(s) {
-  const { E, N } = wgs84ToLV95(s.lat, s.lng);
-  return `<span class="c-lv95">${fmt(E)} / ${fmt(N)}</span>
-    <span class="c-wgs">${s.lat.toFixed(5)}° N, ${s.lng.toFixed(5)}° E${s.alt ? ` · alt. ${Math.round(s.alt)} m` : ''}</span>`;
+/** Plan de secours : groupes « Secours » et « Signalisation », ligne électrique, flèches de circulation. */
+function estSecours(kind) {
+  const d = SYMBOL_BY_KIND[kind];
+  return !!d && (d.group === 'Secours' || d.group === 'Signalisation' || kind === 'electrique' || kind === 'circulation');
 }
+/** Plan d'organisation : groupes « Coupe » et « Zones et lignes », textes, et un petit repère H. */
+function estOrga(kind) {
+  const d = SYMBOL_BY_KIND[kind];
+  return !!d && (d.group === 'Coupe' || d.group === 'Zones et lignes' || kind === 'texte' || kind === 'heli');
+}
+
+const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '’');
 
 let ficheMap = null;
 
@@ -140,17 +147,9 @@ export function renderFiche(root, chantier, opt) {
         : `<input type="${type}" data-key="${key}" value="${esc(info[key] || '')}" placeholder="${esc(ph)}">`}
     </label>`;
 
-  const coordLine = (kind, title) => {
-    const list = sym(kind);
-    return `<div class="f-row f-coordrow"><span>${symbolSvg(kind, 20)} ${title}</span><div class="f-val">${list.length
-      ? list.map(coordBlock).join('')
-      : '<span class="missing">à placer sur la carte (étape 2)</span>'}</div></div>`;
-  };
 
-  const kindsUsed = SYMBOLS.filter((d) => chantier.symbols.some((s) => s.kind === d.kind) && !['texte', 'zone'].includes(d.kind));
   const zones = chantier.symbols.filter((s) => s.kind === 'zone' && s.text);
   const legendIcon = (d) => symbolSvg(d.kind, d.mode === 'point' && !['heli', 'point_t'].includes(d.kind) ? 20 : 18);
-  const area = chantier.parcel ? formatArea(polygonArea(L.polygon(chantier.parcel))).split(' (')[0] : '';
 
   const DANGERS = ['Chute de hauteur', 'Chute de pierres', 'Bois mort', 'Ligne électrique', 'Route, trafic', 'Tiers (promeneurs…)', 'Pas de réseau mobile', 'Pente raide', 'Autres'];
   if (info.mesures === undefined && typeof info.dangers === 'string') info.mesures = info.dangers; // ancienne case « Dangers et mesures »
@@ -164,6 +163,21 @@ export function renderFiche(root, chantier, opt) {
     </div></div>`;
 
   const extras = opt.extraLayers ? opt.extraLayers() : [];
+
+  // Symboles affichés sur chaque plan (selon le groupe de symbols.js)
+  const kindsSec = SYMBOLS.filter((d) => estSecours(d.kind) && chantier.symbols.some((s) => s.kind === d.kind) && d.kind !== 'texte');
+  const kindsOrg = SYMBOLS.filter((d) => estOrga(d.kind) && chantier.symbols.some((s) => s.kind === d.kind) && !['texte', 'zone'].includes(d.kind));
+  const zonesSansNom = chantier.symbols.some((s) => s.kind === 'zone' && !s.text);
+  const legende = (list, extra = '') => `${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
+    ${list.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}${extra}`;
+  const coordsGrand = (s) => {
+    if (!s) return '<span class="missing">à placer sur la carte (étape 2)</span>';
+    const { E, N } = wgs84ToLV95(s.lat, s.lng);
+    return `<span class="cf-big">${fmt(E)} / ${fmt(N)}</span><span class="cf-wgs">MN95 · ${s.lat.toFixed(5)}° N, ${s.lng.toFixed(5)}° E${s.alt ? ` · alt. ${Math.round(s.alt)} m` : ''}</span>`;
+  };
+  const NORD = '<div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>';
+  const etabli = new Date().toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const champ = (key, label, ph = '') => `<div class="cf-field"><span>${esc(label)}</span><input data-key="${key}" value="${esc(info[key] || '')}" placeholder="${esc(ph)}"></div>`;
 
   root.innerHTML = `
   <div class="fiche-bar no-print">
@@ -180,7 +194,98 @@ export function renderFiche(root, chantier, opt) {
     </a>
   </div>
 
-  <article class="page">
+  <!-- Page 1 : plan de secours -->
+  <article class="page cf-page cf-secours">
+    <header class="cf-head">
+      <div class="cf-head-txt">
+        <div class="cf-titre">Chantier forestier</div>
+        ${placeRow('lieu_h', 'Commune / lieu-dit', heli, 'ex. Le Mont-sur-Lausanne, Bois de la Chenaille')}
+      </div>
+      <img src="img/logo-triage.jpg" alt="Triage forestier du Vallon" class="f-logo f-logo-small">
+    </header>
+    <section class="cf-coords">
+      <div class="cf-box cf-h">
+        <div class="cf-box-t">${symbolSvg('heli', 30)}<span>COORDONNÉES H</span><small>sauvetage aérien</small></div>
+        <div class="cf-box-v">${coordsGrand(heli)}</div>
+      </div>
+      <div class="cf-box cf-t">
+        <div class="cf-box-t">${symbolSvg('point_t', 30)}<span>COORDONNÉES T</span><small>rencontre avec l'ambulance</small></div>
+        <div class="cf-box-v">${coordsGrand(T)}</div>
+        ${placeRow('localite_t', 'Lieu / adresse', T, 'ex. Parking du Chalet-à-Gobet')}
+      </div>
+    </section>
+    <section class="cf-nums">
+      <div class="cf-num-list">${NUMS_SECOURS.map(([n, l, ico]) => `<div class="cf-num">${ico}<b>${n}</b><span>${l}</span></div>`).join('')}</div>
+      <div class="cf-contacts">
+        <div class="f-row"><span>Hôpital le plus proche</span><div class="f-auto"><textarea data-key="hopital" rows="1" placeholder="Nom – téléphone">${esc(info.hopital || '')}</textarea></div></div>
+        <div class="f-row"><span>Médecin de garde</span><div class="f-auto"><textarea data-key="medecin" rows="1" placeholder="Nom – téléphone">${esc(info.medecin || '')}</textarea></div></div>
+      </div>
+    </section>
+    <section class="cf-mapsec">
+      <div class="f-mapwrap">
+        <div id="fiche-map"></div>
+        <div class="cf-label">Plan de secours</div>
+        ${NORD}
+        <div class="f-inset" id="f-inset" hidden>
+          <div id="fiche-inset-map"></div>
+          <button type="button" class="f-inset-reset no-print" id="f-inset-reset" title="Remettre à sa place" aria-label="Remettre le cartouche à sa place">↺</button>
+          <button type="button" class="f-inset-side no-print" id="f-inset-side" title="Texte à côté / en dessous" aria-label="Mettre le texte à côté ou en dessous">⇆</button>
+          <div class="f-inset-handle no-print" id="f-inset-handle" title="Agrandir / réduire" aria-label="Agrandir ou réduire le cartouche"></div>
+          <div class="f-inset-cap" id="f-inset-cap"></div>
+        </div>
+        <button type="button" class="f-recadrer no-print" id="f-recadrer" ${chantier.ficheView ? '' : 'hidden'}>↺ Cadrage automatique</button>
+      </div>
+      <div class="cf-under">
+        <div class="cf-under-txt">
+          <b id="f-ratio">Plan de secours</b>
+          <div class="f-legend">${legende(kindsSec)}</div>
+        </div>
+        <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position sur ce plan</span></div>
+      </div>
+    </section>
+    <footer class="cf-foot"><span>Vérifier l'accès et le réseau sur place avant le début des travaux.</span><span>Établi le ${etabli} · Page 1/3</span></footer>
+  </article>
+
+  <!-- Page 2 : plan d'organisation du chantier -->
+  <article class="page cf-page cf-org">
+    <header class="cf-head">
+      <div class="cf-head-txt">
+        <div class="cf-titre">Plan d'organisation du chantier</div>
+        <div class="cf-sous" data-mirror="name">${esc(info.name || '')}</div>
+      </div>
+      <img src="img/logo-triage.jpg" alt="" class="f-logo f-logo-small">
+    </header>
+    <section class="cf-info">
+      <div class="cf-info-col">
+        ${champ('proprietaire', 'Propriétaire', 'ex. Commune de …')}
+        ${champ('entreprise', 'Entreprise', 'ex. Entreprise forestière …')}
+        ${champ('communication', 'Communication', 'ex. radio canal 3, téléphone')}
+        ${champ('volume', 'Volume de bois prévu', 'm³')}
+      </div>
+      <div class="cf-info-col">
+        ${champ('triage', 'Triage forestier', 'ex. Triage de …')}
+        <div class="cf-field"><span>Responsable</span><div class="cf-val" id="resp-org">${esc(info.responsable || '')}</div></div>
+        <div class="cf-field"><span>Période de coupe</span><div class="cf-period"><input type="date" data-key="date" value="${esc(info.date || '')}"><span>–</span><input type="date" data-key="date_fin" value="${esc(info.date_fin || '')}"></div></div>
+        ${champ('no_chantier', 'N° de chantier')}
+      </div>
+    </section>
+    <section class="cf-orgmap">
+      <div class="f-mapwrap">
+        <div id="org-map"></div>
+        <div class="cf-label">Plan d'organisation du chantier</div>
+        ${NORD}
+        <button type="button" class="f-recadrer no-print" id="org-recadrer" ${chantier.ficheViewOrg ? '' : 'hidden'}>↺ Cadrage automatique</button>
+      </div>
+      <aside class="cf-legend-col">
+        <b>Légende</b>
+        <div class="f-legend">${legende(kindsOrg, `${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}${zonesSansNom ? `<span>${symbolSvg('zone', 18)}Zone</span>` : ''}`)}</div>
+      </aside>
+    </section>
+    <footer class="cf-foot"><span id="org-ratio">Échelle ≈ 1:… (A4, impression à 100 %)</span><span>Établi le ${etabli} · Page 2/3</span></footer>
+  </article>
+
+  <!-- Page 3 : attribution du travail -->
+  <article class="page cf-page cf-attr">
     <header class="f-head">
       <div>
         <div class="f-kicker">ORGANISATION DE CHANTIER · VAUD</div>
@@ -223,76 +328,7 @@ export function renderFiche(root, chantier, opt) {
         </div>
       </div>
     </section>
-
-    <h2 class="f-sec">Organisation en cas d'urgence</h2>
-    <section class="f-cols">
-    <div class="f-suva">
-      <h3>Numéros d'urgence</h3>
-      <div class="f-nums">${NUMEROS.map(([n, l]) => `<div><span>${l}</span><b>${n}</b></div>`).join('')}</div>
-      <div class="f-contacts">
-        <div class="f-row"><span>Médecin</span><div class="f-auto"><textarea data-key="medecin" rows="1" placeholder="Nom – téléphone">${esc(info.medecin || '')}</textarea></div></div>
-        <div class="f-row"><span>Hôpital</span><div class="f-auto"><textarea data-key="hopital" rows="1" placeholder="Nom – téléphone">${esc(info.hopital || '')}</textarea></div></div>
-      </div>
-      <h3>Sauvetage aérien <small>(milieu du lieu d'abattage)</small></h3>
-      <div class="f-contacts">
-        ${placeRow('lieu_h', 'Lieu-dit', heli, 'ex. Alpage de Tracuit, Chalais')}
-        ${coordLine('heli', 'Coordonnées H')}
-      </div>
-      <h3>Sauvetage terrestre <small>(point T)</small></h3>
-      <div class="f-contacts">
-        ${placeRow('localite_t', 'Lieu / adresse', T, 'ex. Les Ziettes, Vercorin')}
-        ${coordLine('point_t', 'Coordonnées T')}
-      </div>
-    </div>
-
-    <div class="f-box f-alarme">
-      <h3>Annonce d'une urgence</h3>
-      <ol>
-        <li><b>Qui</b> donne l'alerte ? (nom, n° de téléphone)</li>
-        <li><b>Que</b> s'est-il passé ?</li>
-        <li><b>Quand</b> a eu lieu l'accident ?</li>
-        <li><b>Où</b> sont les blessés ? Lire les <b>coordonnées H ou T</b></li>
-        <li><b>Combien</b> de blessés ?</li>
-        <li><b>Autres dangers</b> : câbles, lignes électriques, météo, vent</li>
-      </ol>
-      <p class="f-small">Rester joignable. Ne pas raccrocher le premier. Envoyer quelqu'un au point de rencontre (T).</p>
-      <p class="f-small"><b>L'organisation en cas d'urgence doit être connue de tous et vérifiée chaque jour</b> (météo, visibilité, accès).</p>
-    </div>
-    </section>
-  </article>
-
-  <article class="page page-plan">
-    <header class="f-head f-head-small">
-      <div>
-        <div class="f-kicker">ORGANISATION DE CHANTIER · PLAN DE COUPE</div>
-        <div class="f-title-small">${esc(info.name || '')}${area ? ` <small>· parcelle ${esc(area)}</small>` : ''}</div>
-      </div>
-      <img src="img/logo-triage.jpg" alt="" class="f-logo f-logo-small">
-    </header>
-    <section class="f-plan">
-      <div class="f-mapwrap">
-        <div id="fiche-map"></div>
-        <div class="f-north" aria-label="Nord"><svg width="26" height="40" viewBox="0 0 26 40"><path d="M13 2L22 30L13 25L4 30Z" fill="#333"/><path d="M13 2L13 25L4 30Z" fill="#888"/><text x="13" y="39" font-size="10" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#111">N</text></svg></div>
-        <div class="f-ratio" id="f-ratio"></div>
-        <div class="f-inset" id="f-inset" hidden>
-          <div id="fiche-inset-map"></div>
-          <button type="button" class="f-inset-reset no-print" id="f-inset-reset" title="Remettre à sa place" aria-label="Remettre le cartouche à sa place">↺</button>
-          <button type="button" class="f-inset-side no-print" id="f-inset-side" title="Texte à côté / en dessous" aria-label="Mettre le texte à côté ou en dessous">⇆</button>
-          <div class="f-inset-handle no-print" id="f-inset-handle" title="Agrandir / réduire" aria-label="Agrandir ou réduire le cartouche"></div>
-          <div class="f-inset-cap" id="f-inset-cap"></div>
-        </div>
-        <button type="button" class="f-recadrer no-print" id="f-recadrer" ${chantier.ficheView ? '' : 'hidden'}>↺ Cadrage automatique</button>
-      </div>
-      <div class="f-plan-foot">
-      <div class="f-legend">
-        <b>Légende :</b>
-        ${chantier.parcel ? '<span><i class="lg-parcel"></i>Parcelle</span>' : ''}
-        ${kindsUsed.map((d) => `<span>${legendIcon(d)}${esc(d.label)}</span>`).join('')}
-        ${zones.map((z) => `<span><i class="lg-zone" style="border-color:${z.color};background:${z.color}33"></i>${esc(z.text)}</span>`).join('')}
-      </div>
-      <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position sur ce plan</span></div>
-      </div>
-    </section>
+    <footer class="cf-foot"><span></span><span>Établi le ${etabli} · Page 3/3</span></footer>
   </article>`;
 
   const updateCall = () => {
@@ -302,6 +338,7 @@ export function renderFiche(root, chantier, opt) {
     root.querySelector('#call-resp-nom').textContent = info.responsable || 'Responsable';
     root.querySelector('#call-resp-role').textContent = [info.resp_role, info.resp_tel].filter(Boolean).join(' · ');
     root.querySelector('#resp-print').textContent = [info.responsable, info.resp_role, info.resp_tel].filter(Boolean).join(' – ');
+    root.querySelector('#resp-org').textContent = info.responsable || '';
   };
   root.querySelector('#resp-select').addEventListener('change', (e) => {
     if (e.target.value === 'liste') {
@@ -384,6 +421,9 @@ export function renderFiche(root, chantier, opt) {
     };
     el.addEventListener('input', () => {
       info[el.dataset.key] = el.value;
+      // même donnée sur plusieurs pages (volume, dates, nom) : les autres cases suivent
+      root.querySelectorAll(`[data-key="${el.dataset.key}"]`).forEach((o) => { if (o !== el) o.value = el.value; });
+      root.querySelectorAll(`[data-mirror="${el.dataset.key}"]`).forEach((o) => { o.textContent = el.value; });
       if (el.dataset.key === 'localite_t') updateTInset(chantier); // le cartouche suit la case « Lieu / adresse »
       grow();
       opt.onChange();
@@ -393,30 +433,31 @@ export function renderFiche(root, chantier, opt) {
   root.querySelector('#fiche-close').addEventListener('click', opt.onClose);
   root.querySelector('#fiche-print').addEventListener('click', () => printFiche(root, chantier));
 
-  // Carte du plan
+  // Cartes des deux plans
+  const nouvelleCarte = (el) => {
+    const m = L.map(el, {
+      zoomControl: false, attributionControl: true, dragging: true, scrollWheelZoom: false,
+      doubleClickZoom: true, touchZoom: true, tap: false, zoomSnap: 0.25,
+    });
+    m.attributionControl.setPrefix(false);
+    opt.makeBaseLayer().addTo(m);
+    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(m);
+    if (chantier.parcel) {
+      L.polygon(chantier.parcel, PARCEL_STYLE_OUTLINE).addTo(m);
+      L.polygon(chantier.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(m);
+    }
+    return m;
+  };
   if (ficheMap) ficheMap.remove();
-  ficheMap = L.map(root.querySelector('#fiche-map'), {
-    zoomControl: false,
-    attributionControl: true,
-    dragging: true,
-    scrollWheelZoom: false,
-    doubleClickZoom: true,
-    touchZoom: true,
-    tap: false,
-    zoomSnap: 0.25,
-  });
-  ficheMap.attributionControl.setPrefix(false);
-  opt.makeBaseLayer().addTo(ficheMap);
-  extras.forEach((x) => x.layer.addTo(ficheMap));
-  L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(ficheMap);
-  if (chantier.parcel) {
-    L.polygon(chantier.parcel, PARCEL_STYLE_OUTLINE).addTo(ficheMap);
-    L.polygon(chantier.parcel, { ...PARCEL_STYLE, interactive: false }).addTo(ficheMap);
-  }
-  for (const s of chantier.symbols) symbolLayer(s, { interactive: false })?.addTo(ficheMap);
+  if (orgMap) orgMap.remove();
   if (insetMap) insetMap.remove();
   insetMap = null;
   ficheOpt = opt;
+
+  // Plan de secours
+  ficheMap = nouvelleCarte(root.querySelector('#fiche-map'));
+  extras.forEach((x) => x.layer.addTo(ficheMap));
+  for (const s of chantier.symbols) if (estSecours(s.kind)) symbolLayer(s, { interactive: false })?.addTo(ficheMap);
   fitFicheMap(chantier);
   ficheMap.on('zoomend', updateRatio);
   ficheMap.on('moveend zoomend resize', () => updateTInset(chantier));
@@ -434,6 +475,59 @@ export function renderFiche(root, chantier, opt) {
     root.querySelector('#f-recadrer').hidden = true;
     opt.onChange();
   });
+
+  // Plan d'organisation du chantier (sans point T)
+  orgMap = nouvelleCarte(root.querySelector('#org-map'));
+  for (const s of chantier.symbols) {
+    if (!estOrga(s.kind)) continue;
+    if (s.kind === 'heli') {
+      // petit repère H, sans les coordonnées
+      L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'sym', html: symbolSvg('heli', 20), iconSize: [20, 20], iconAnchor: [10, 10] }), interactive: false, keyboard: false }).addTo(orgMap);
+    } else symbolLayer(s, { interactive: false })?.addTo(orgMap);
+  }
+  fitOrgMap(chantier);
+  orgMap.on('zoomend', updateRatio);
+  orgMap.on('moveend', () => {
+    if (recadrageOrg || root.classList.contains('print-layout')) return;
+    const b = orgMap.getBounds();
+    chantier.ficheViewOrg = { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() };
+    root.querySelector('#org-recadrer').hidden = false;
+    opt.onChange();
+  });
+  root.querySelector('#org-recadrer').addEventListener('click', () => {
+    delete chantier.ficheViewOrg;
+    fitOrgMap(chantier, { auto: true });
+    root.querySelector('#org-recadrer').hidden = true;
+    opt.onChange();
+  });
+}
+
+let orgMap = null;
+let recadrageOrg = false;
+
+/** Plan d'organisation : cadrage choisi à la main, sinon serré sur la parcelle et les symboles de la coupe. */
+function fitOrgMap(chantier, { auto = false } = {}) {
+  if (!orgMap) return;
+  recadrageOrg = true;
+  orgMap.invalidateSize({ animate: false, pan: false });
+  const v = chantier.ficheViewOrg;
+  if (v && !auto) {
+    orgMap.fitBounds([[v.s, v.w], [v.n, v.e]], { animate: false });
+  } else {
+    const pts = [...(chantier.parcel || [])];
+    for (const s of chantier.symbols) {
+      const d = SYMBOL_BY_KIND[s.kind];
+      if (!d || !(d.group === 'Coupe' || ['zone', 'layon'].includes(s.kind))) continue;
+      if (s.lat != null) pts.push([s.lat, s.lng]);
+      if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
+      if (s.pts) pts.push(...s.pts);
+    }
+    if (pts.length > 1) orgMap.fitBounds(L.latLngBounds(pts).pad(0.06), { maxZoom: 19, animate: false });
+    else if (pts.length === 1) orgMap.setView(pts[0], 18, { animate: false });
+    else orgMap.setView([46.6, 6.6], 9, { animate: false });
+  }
+  recadrageOrg = false;
+  updateRatio();
 }
 
 let recadrageAuto = false;
@@ -453,13 +547,18 @@ function fitFicheMap(chantier, { auto = false } = {}) {
     updateTInset(chantier);
     return;
   }
+  // Plan de secours : parcelle + H + T (un point T éloigné est montré dans le cartouche)
   const loin = tLoin(chantier);
   const pts = [...(chantier.parcel || [])];
   for (const s of chantier.symbols) {
-    if (loin && (s === loin.T || s.kind === 'acces_t')) continue; // point T éloigné : montré dans un cartouche
-    if (s.lat != null) pts.push([s.lat, s.lng]);
-    if (s.lat2 != null) pts.push([s.lat2, s.lng2]);
-    if (s.pts) pts.push(...s.pts);
+    if (s.kind === 'heli' || (s.kind === 'point_t' && !loin)) pts.push([s.lat, s.lng]);
+  }
+  if (!pts.length) {
+    for (const s of chantier.symbols) {
+      if (!estSecours(s.kind)) continue;
+      if (s.lat != null) pts.push([s.lat, s.lng]);
+      if (s.pts) pts.push(...s.pts);
+    }
   }
   if (pts.length > 1) ficheMap.fitBounds(L.latLngBounds(pts).pad(0.08), { maxZoom: 18, animate: false });
   else if (pts.length === 1) ficheMap.setView(pts[0], 17, { animate: false });
@@ -662,14 +761,22 @@ export function printFiche(root, chantier) {
   root.querySelectorAll('input[type=date]').forEach((d) => d.classList.toggle('is-empty', !d.value));
   root.querySelectorAll('textarea').forEach((t) => { t.style.height = 'auto'; t.style.height = `${t.scrollHeight + 2}px`; });
   fitFicheMap(chantier);
+  fitOrgMap(chantier);
   let done = false;
   const go = () => {
     if (done) return;
     done = true;
     window.print();
   };
-  ficheMap?.eachLayer((l) => l.once?.('load', () => setTimeout(go, 300)));
-  setTimeout(go, 2500);
+  // attendre les fonds de carte des deux plans (au plus 3 s)
+  const t0 = Date.now();
+  const attendre = () => {
+    let charge = false;
+    [ficheMap, orgMap].forEach((m) => m?.eachLayer((l) => { if (l.isLoading?.()) charge = true; }));
+    if (!charge || Date.now() - t0 > 3000) setTimeout(go, 300);
+    else setTimeout(attendre, 200);
+  };
+  setTimeout(attendre, 300);
 }
 
 window.addEventListener('afterprint', () => {
@@ -677,18 +784,23 @@ window.addEventListener('afterprint', () => {
   if (!root) return;
   root.classList.remove('print-layout');
   if (ficheMap && dernierChantier) fitFicheMap(dernierChantier); // revient au cadrage enregistré (sans l'écraser)
+  if (orgMap && dernierChantier) fitOrgMap(dernierChantier);
 });
 
-/** Échelle approximative du plan (1 : N) d'après le zoom et la taille à l'écran / sur papier. */
-function updateRatio() {
-  const el = document.getElementById('f-ratio');
-  if (!el || !ficheMap) return;
-  const lat = ficheMap.getCenter().lat;
-  const mPerPx = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** ficheMap.getZoom());
+/** Échelle approximative d'un plan (1 : N) d'après le zoom et la taille à l'écran / sur papier. */
+function echelle(map) {
+  const lat = map.getCenter().lat;
+  const mPerPx = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** map.getZoom());
   const ratio = mPerPx / (0.0254 / 96);
   const nice = [250, 500, 700, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 7500, 10000, 15000, 20000, 25000, 50000, 100000];
   const r = nice.reduce((best, x) => (Math.abs(Math.log(x / ratio)) < Math.abs(Math.log(best / ratio)) ? x : best), nice[0]);
-  el.textContent = `Échelle ≈ 1 : ${r.toLocaleString('fr-CH')}`;
+  return r.toLocaleString('fr-CH');
+}
+function updateRatio() {
+  const sec = document.getElementById('f-ratio');
+  if (sec && ficheMap) sec.textContent = `Plan de secours · échelle ≈ 1:${echelle(ficheMap)}`;
+  const org = document.getElementById('org-ratio');
+  if (org && orgMap) org.textContent = `Échelle ≈ 1:${echelle(orgMap)} (A4, impression à 100 %)`;
 }
 
 export function closeFicheMap() {
@@ -697,6 +809,8 @@ export function closeFicheMap() {
   insetMap = null;
   if (ficheMap) ficheMap.remove();
   ficheMap = null;
+  if (orgMap) orgMap.remove();
+  orgMap = null;
 }
 
 export { SYMBOL_BY_KIND };

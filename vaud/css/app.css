@@ -454,3 +454,115 @@ body.viewer #map { bottom: 0; }
 .print-layout .f-inset-side { display: none !important; }
 .f-inset.side { width: 62%; max-width: 400px; }
 .print-layout .f-inset.side { width: 110mm; }
+
+/* ================================================================ */
+/* Fiche au format CFPF : plan de secours, plan d'organisation,      */
+/* attribution du travail (3 pages A4 paysage)                       */
+/* ================================================================ */
+.cf-page { max-width: 297mm; }
+.cf-head { display: flex; gap: 12px; align-items: center; border-bottom: 3px solid var(--red); padding-bottom: 6px; margin-bottom: 8px; }
+.cf-head-txt { flex: 1; min-width: 0; }
+.cf-titre { font-size: 24px; font-weight: 800; line-height: 1.1; }
+.cf-sous { font-size: 14px; color: #333; font-weight: 700; min-height: 1em; }
+.cf-head .f-row { font-weight: 400; margin-top: 2px; }
+.cf-head .f-row > span { display: none; }
+.cf-head .f-auto textarea { font-size: 15px; border: 0; border-bottom: 1.5px dotted #999; padding: 1px 2px; }
+/* Coordonnées H et T */
+.cf-coords { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cf-box { border: 3px solid; border-radius: 6px; padding: 6px 10px; min-width: 0; }
+.cf-h { border-color: #e31e24; }
+.cf-t { border-color: #1a8fd0; }
+.cf-box-t { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 16px; letter-spacing: .03em; }
+.cf-h .cf-box-t { color: #c00000; }
+.cf-t .cf-box-t { color: #0d5f8f; }
+.cf-box-t small { font-weight: 400; font-size: 11px; color: #555; letter-spacing: 0; }
+.cf-box-v { margin: 2px 0 0 38px; }
+.cf-big { display: block; font-family: ui-monospace, Menlo, monospace; font-weight: 800; font-size: 26px; line-height: 1.15; white-space: nowrap; }
+.cf-h .cf-big { color: #c00000; }
+.cf-t .cf-big { color: #0d5f8f; }
+.cf-wgs { display: block; font-size: 11px; color: #444; }
+.cf-t .f-row { margin: 3px 0 0 38px; font-size: 11px; }
+.cf-t .f-row > span { color: #555; }
+/* Numéros d'urgence */
+.cf-nums { display: grid; grid-template-columns: 1.3fr 1fr; gap: 10px; align-items: center; margin-top: 8px; padding: 6px 8px; background: #f1f1f1; border-radius: 6px; }
+.cf-num-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; }
+.cf-num { display: flex; align-items: center; gap: 5px; font-size: 11.5px; white-space: nowrap; }
+.cf-num svg { flex: none; }
+.cf-num b { font-size: 17px; }
+.cf-contacts { display: grid; gap: 3px; }
+.cf-contacts .f-row { grid-template-columns: 9.5em 1fr; font-size: 11.5px; }
+/* Cartes */
+.cf-mapsec, .cf-orgmap { margin-top: 8px; }
+.cf-page .f-mapwrap { position: relative; }
+.cf-page #fiche-map, .cf-page #org-map { height: 62vh; min-height: 320px; border: 1px solid #999; border-radius: 4px; margin: 0; }
+.cf-label {
+  position: absolute; top: 8px; left: 8px; z-index: 510; background: #fff; border: 2px solid #111; border-radius: 4px;
+  padding: 2px 8px; font-weight: 800; font-size: 13px; pointer-events: none;
+}
+.cf-secours .inset-tl .f-inset { top: 40px; }
+.cf-page .f-recadrer { top: auto; bottom: 34px; }
+.cf-under { display: flex; align-items: flex-end; gap: 12px; margin-top: 4px; }
+.cf-under-txt { flex: 1; min-width: 0; }
+.cf-under-txt b { font-size: 13px; }
+.cf-under .f-legend { margin-top: 2px; }
+.cf-under .f-qr { flex-direction: column; text-align: center; gap: 2px; font-size: 9.5px; margin-left: 0; }
+.cf-under .f-qr #f-qr-img svg { width: 24mm; height: 24mm; }
+/* En-tête du plan d'organisation */
+.cf-info { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.cf-field { display: grid; grid-template-columns: 11em 1fr; align-items: baseline; gap: 6px; font-size: 12.5px; }
+.cf-field > span { font-weight: 700; color: #333; }
+.cf-field input { font-size: 13px; padding: 2px; }
+.cf-val { border-bottom: 1.5px dotted #999; min-height: 22px; padding: 2px; font-size: 13px; }
+.cf-period { display: flex; align-items: center; gap: 4px; }
+.cf-period input { min-width: 0; }
+.cf-orgmap { display: grid; grid-template-columns: 1fr 210px; gap: 10px; align-items: start; }
+.cf-legend-col { font-size: 12px; }
+.cf-legend-col .f-legend { flex-direction: column; flex-wrap: nowrap; gap: 4px; margin-top: 4px; }
+/* Pied de page */
+.cf-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; padding-top: 3px; border-top: 1px solid #bbb; font-size: 10.5px; color: #444; }
+@media (max-width: 700px) {
+  .cf-coords, .cf-nums, .cf-info, .cf-orgmap { grid-template-columns: 1fr; }
+  .cf-big { font-size: 22px; white-space: normal; }
+  .cf-num-list { grid-template-columns: repeat(2, 1fr); }
+  .cf-field { grid-template-columns: 1fr; gap: 0; }
+}
+
+/* Impression : 3 pages A4 paysage (281 × 194 mm utiles) */
+.print-layout .page.cf-page { width: 281mm; max-width: none; height: 193mm; padding: 0; margin: 0; overflow: hidden; display: flex; flex-direction: column; font-size: 12px; break-after: page; page-break-after: always; }
+.print-layout .page.cf-page:last-of-type { break-after: auto; page-break-after: auto; }
+.print-layout .page.cf-attr { height: auto; min-height: 0; overflow: visible; }
+.print-layout .cf-coords { grid-template-columns: 1fr 1fr; }
+.print-layout .cf-nums { grid-template-columns: 1.3fr 1fr; margin-top: 2mm; padding: 1.5mm 2mm; }
+.print-layout .cf-num-list { grid-template-columns: repeat(6, auto); }
+.print-layout .cf-info { grid-template-columns: 1fr 1fr; }
+.print-layout .cf-field { grid-template-columns: 11em 1fr; }
+.print-layout .cf-big { font-size: 24px; white-space: nowrap; }
+.print-layout .cf-head { margin-bottom: 2mm; padding-bottom: 1mm; }
+.print-layout .cf-titre { font-size: 20px; }
+.print-layout .cf-mapsec, .print-layout .cf-orgmap { flex: 1; min-height: 0; margin-top: 2mm; }
+.print-layout .cf-mapsec { display: flex; flex-direction: column; }
+.print-layout .cf-mapsec .f-mapwrap { flex: 1; min-height: 0; }
+.print-layout .cf-orgmap { display: grid; grid-template-columns: 1fr 58mm; grid-template-rows: 100%; }
+.print-layout .cf-orgmap .f-mapwrap { height: 100%; }
+/* Leaflet met « position: relative » directement sur la carte : !important pour qu'elle remplisse son cadre */
+.print-layout .cf-page #fiche-map, .print-layout .cf-page #org-map { position: absolute !important; inset: 0; width: auto; height: auto; min-height: 0; margin: 0; }
+.print-layout .cf-under { flex: none; height: 24mm; margin-top: 1mm; }
+.print-layout .cf-under .f-qr #f-qr-img svg { width: 20mm; height: 20mm; }
+.print-layout .cf-under .f-legend { font-size: 10px; gap: 1px 8px; }
+.print-layout .cf-under .f-legend svg { height: 13px; }
+.print-layout .cf-legend-col .f-legend { font-size: 10.5px; gap: 2px; }
+.print-layout .cf-legend-col .f-legend svg { height: 16px; }
+.print-layout .cf-foot { flex: none; margin-top: 1.5mm; }
+.print-layout .cf-label { font-size: 12px; }
+@media print {
+  @page { size: A4 landscape; margin: 8mm; }
+  .cf-page { break-inside: avoid; }
+}
+/* Impression : plus de place pour la carte du plan de secours */
+.print-layout .cf-box { padding: 1mm 3mm; border-width: 2.5px; }
+.print-layout .cf-box-v { margin-top: 0; }
+.print-layout .cf-big { font-size: 22px; }
+.print-layout .cf-under { height: 19mm; }
+.print-layout .cf-under .f-qr #f-qr-img svg { width: 17mm; height: 17mm; }
+.print-layout .cf-under .f-qr span { font-size: 8px; }
+.print-layout .cf-head .f-auto textarea { font-size: 13px; }
