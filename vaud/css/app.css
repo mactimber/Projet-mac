@@ -687,3 +687,70 @@ body.viewer #map { bottom: 0; }
 .print-layout.orient-portrait .cf-big { font-size: min(30px, 7.6cqi); }
 .print-layout.orient-portrait .cf-coords { gap: 2mm; }
 .print-layout.orient-portrait .cf-box { padding: 1.5mm 4mm; }
+
+/* ================================================================ */
+/* Page 1 compacte (comme le plan CFPF) : la carte prend la place    */
+/* ================================================================ */
+.cf-nums { grid-template-columns: auto 1fr auto; gap: 12px; }
+.cf-nums .f-qr { flex-direction: column; text-align: center; gap: 1px; font-size: 8.5px; margin: 0; }
+.cf-nums .f-qr #f-qr-img svg { width: 19mm; height: 19mm; }
+.cf-num-list { grid-template-columns: repeat(3, auto); }
+.cf-under { display: flex; align-items: center; gap: 10px; height: auto; margin-top: 3px; }
+.cf-under .f-legend { flex: 1; min-width: 0; margin: 0; font-size: 10.5px; gap: 2px 10px; }
+.cf-under .f-legend svg { height: 14px; }
+#f-ratio { white-space: nowrap; font-size: 11px; color: #333; }
+@media (max-width: 700px) {
+  .cf-nums { grid-template-columns: 1fr; }
+  .cf-nums .f-qr { flex-direction: row; justify-content: center; }
+  .cf-under { flex-direction: column; align-items: flex-start; }
+}
+
+/* Ordinateur : aperçu aux proportions de la feuille A4 (ce qu'on voit = le PDF) */
+@media (min-width: 900px) {
+  #fiche:not(.print-layout) .cf-page.cf-secours, #fiche:not(.print-layout) .cf-page.cf-org {
+    width: 100%; max-width: 297mm; aspect-ratio: 297 / 210; height: auto; display: flex; flex-direction: column; padding: 8mm;
+  }
+  #fiche.orient-portrait:not(.print-layout) .cf-page.cf-secours, #fiche.orient-portrait:not(.print-layout) .cf-page.cf-org {
+    max-width: 210mm; aspect-ratio: 210 / 297;
+  }
+  #fiche:not(.print-layout) .cf-mapsec { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #fiche:not(.print-layout) .cf-mapsec .f-mapwrap { flex: 1; min-height: 0; }
+  #fiche:not(.print-layout) .cf-orgmap { flex: 1; min-height: 0; grid-template-rows: 100%; }
+  #fiche:not(.print-layout) .cf-orgmap .f-mapwrap { height: 100%; }
+  #fiche.orient-portrait:not(.print-layout) .cf-orgmap { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  #fiche.orient-portrait:not(.print-layout) .cf-legend-col .f-legend { flex-direction: row; flex-wrap: wrap; gap: 3px 12px; }
+  #fiche:not(.print-layout) .cf-page #fiche-map, #fiche:not(.print-layout) .cf-page #org-map {
+    position: absolute !important; inset: 0; height: auto; min-height: 0;
+  }
+}
+
+/* Impression : même page 1 compacte */
+.print-layout .cf-nums { grid-template-columns: auto 1fr auto; gap: 3mm; padding: 1.5mm 2.5mm; }
+.print-layout .cf-num-list { grid-template-columns: repeat(3, auto); gap: 1mm 4mm; }
+.print-layout .cf-contacts { grid-template-columns: 1fr; gap: 1mm; }
+.print-layout .cf-nums .f-qr #f-qr-img svg { width: 16mm; height: 16mm; }
+.print-layout .cf-under { height: auto; flex: none; margin-top: 1mm; }
+.print-layout .cf-under .f-legend { font-size: 9px; gap: 1px 8px; }
+.print-layout .cf-under .f-legend svg { height: 12px; }
+.print-layout #f-ratio { font-size: 10px; }
+.print-layout.orient-portrait .cf-nums { grid-template-columns: auto 1fr auto; gap: 2mm; }
+.print-layout.orient-portrait .cf-num-list { grid-template-columns: repeat(3, auto); gap: 1mm 3mm; }
+.print-layout.orient-portrait .cf-contacts { grid-template-columns: 1fr; }
+.print-layout.orient-portrait .cf-contacts .f-row { grid-template-columns: 6.5em 1fr; }
+/* Impression : en-tête et bandes encore plus serrés pour agrandir la carte du plan de secours */
+.print-layout .cf-page .f-logo-small { height: 10mm; margin-left: 2mm; }
+.print-layout .cf-head { margin-bottom: 1.5mm; padding-bottom: .5mm; gap: 6px; }
+.print-layout .cf-titre { font-size: 18px; }
+.print-layout .cf-sous, .print-layout .cf-head .f-auto textarea { font-size: 11.5px; line-height: 1.2; }
+.print-layout .cf-box { padding: 1mm 3.5mm; }
+.print-layout .cf-box-t { font-size: 9px; }
+.print-layout .cf-sym svg { width: 34px; height: 34px; }
+.print-layout .cf-t .f-auto textarea { font-size: 11px; line-height: 1.2; }
+.print-layout .cf-coords { gap: 2.5mm; }
+.print-layout .cf-nums { margin-top: 1.5mm; padding: 1mm 2.5mm; }
+.print-layout .cf-nums .f-qr #f-qr-img svg { width: 14mm; height: 14mm; }
+.print-layout .cf-nums .f-qr span { font-size: 7px; }
+.print-layout .cf-mapsec { margin-top: 1.5mm; }
+.print-layout .cf-under .f-legend { font-size: 8.5px; gap: 0 7px; }
+.print-layout .cf-under .f-legend svg { height: 11px; }
+.print-layout .cf-foot { margin-top: 1mm; padding-top: 1mm; font-size: 9.5px; }

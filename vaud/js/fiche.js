@@ -233,6 +233,7 @@ export function renderFiche(root, chantier, opt) {
         <div class="f-row"><span>Hôpital le plus proche</span><div class="f-auto"><textarea data-key="hopital" rows="1" placeholder="Nom – téléphone">${esc(info.hopital || '')}</textarea></div></div>
         <div class="f-row"><span>Médecin de garde</span><div class="f-auto"><textarea data-key="medecin" rows="1" placeholder="Nom – téléphone">${esc(info.medecin || '')}</textarea></div></div>
       </div>
+      <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez : votre<br>position sur ce plan</span></div>
     </section>
     <section class="cf-mapsec">
       <div class="f-mapwrap">
@@ -249,11 +250,8 @@ export function renderFiche(root, chantier, opt) {
         <button type="button" class="f-recadrer no-print" id="f-recadrer" ${chantier.ficheView ? '' : 'hidden'}>↺ Cadrage automatique</button>
       </div>
       <div class="cf-under">
-        <div class="cf-under-txt">
-          <b id="f-ratio">Plan de secours</b>
-          <div class="f-legend">${legende(kindsSec)}</div>
-        </div>
-        <div class="f-qr" id="f-qr" hidden><div id="f-qr-img"></div><span>Scannez pour voir<br>votre position sur ce plan</span></div>
+        <div class="f-legend">${legende(kindsSec)}</div>
+        <span id="f-ratio">Plan de secours</span>
       </div>
     </section>
     <footer class="cf-foot"><span>Vérifier l'accès et le réseau sur place avant le début des travaux.</span><span>Établi le ${etabli} · Page 1/3</span></footer>
