@@ -81,6 +81,12 @@ const POINT_SVG = {
   // Élément à protéger : losange orange bordé de noir avec « ! » (différent du triopan)
   element_proteger: [40, 40, `<path d="M20 2.5L37.5 20L20 37.5L2.5 20Z" fill="#f39200" stroke="#111" stroke-width="2.6" stroke-linejoin="round"/>
     <rect x="18" y="10" width="4" height="15" rx="1.4" fill="#111"/><circle cx="20" cy="29.5" r="2.5" fill="#111"/>`],
+  // Sentinelle (poste de garde) : personnage en gilet orange, bras levé
+  sentinelle: [40, 40, `<circle cx="20" cy="20" r="18" fill="#fff" stroke="#e31e24" stroke-width="2.5"/>
+    <circle cx="18" cy="9.5" r="3.6" fill="#111"/>
+    <path d="M13.5 15.5h9l1.2 10h-11.4z" fill="#f39200" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M14.5 25.5L13 33.5M21.5 25.5L23 33.5" stroke="#111" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M22.5 16.5L28 9.5" stroke="#111" stroke-width="2.4" stroke-linecap="round"/><path d="M13.5 16.5L10 23" stroke="#111" stroke-width="2.4" stroke-linecap="round"/>`],
   depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
@@ -132,6 +138,7 @@ export const SYMBOLS = [
   // --- Signalisation
   { kind: 'triopan', group: 'Signalisation', label: 'Triopan', mode: 'point', hint: 'Touchez l\'emplacement du Triopan.' },
   { kind: 'trois_lattes', group: 'Signalisation', label: 'Trois lattes', mode: 'point', hint: 'Touchez l\'emplacement des trois lattes.' },
+  { kind: 'sentinelle', group: 'Signalisation', label: 'Sentinelle', mode: 'point', askText: '', hint: 'Touchez le poste de la sentinelle (texte facultatif : nom, radio…).' },
   { kind: 'barriere', group: 'Signalisation', label: 'Barrière', mode: 'point', hint: 'Touchez l\'emplacement de la barrière.' },
   // orientable comme les piles ; une bâche déjà posée sans angle garde son orientation (angle 90 = horizontal)
   { kind: 'bache', group: 'Signalisation', label: 'Route fermée', mode: 'orient', askText: '', hint: 'Touchez l\'endroit de la fermeture (bâche), puis tournez la poignée ⟳.' },

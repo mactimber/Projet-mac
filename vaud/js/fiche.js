@@ -55,10 +55,10 @@ function estSecours(kind) {
   const d = SYMBOL_BY_KIND[kind];
   return !!d && (d.group === 'Secours' || d.group === 'Signalisation' || kind === 'electrique' || kind === 'circulation');
 }
-/** Plan d'organisation : groupes « Coupe » et « Zones et lignes », textes, et un petit repère H. */
+/** Plan d'organisation : groupes Coupe, Zones et lignes, Logistique, Câble-grue, Nature ; textes, petit repère H, place hélicoptère et sentinelles. */
 function estOrga(kind) {
   const d = SYMBOL_BY_KIND[kind];
-  return !!d && (['Coupe', 'Zones et lignes', 'Logistique et accès', 'Câble-grue', 'Nature et notes'].includes(d.group) || kind === 'texte' || kind === 'heli');
+  return !!d && (['Coupe', 'Zones et lignes', 'Logistique et accès', 'Câble-grue', 'Nature et notes'].includes(d.group) || ['texte', 'heli', 'helico', 'sentinelle'].includes(kind));
 }
 
 const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '’');
