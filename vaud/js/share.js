@@ -10,7 +10,8 @@ import { SYMBOL_BY_KIND } from './symbols.js';
 const KINDS = ['heli', 'point_t', 'vehicule', 'helico', 'abattage', 'debut_vert', 'debut_jaune', 'nacelle', 'camion_grue',
   'pile', 'depot', 'zone', 'layon', 'electrique', 'circulation', 'distance', 'triopan', 'trois_lattes', 'barriere', 'bache', 'texte', 'acces_t', 'arbre_demonter', 'arbre_dangereux', 'arbre_tailler',
   'sortie_simple', 'sortie_double', 'chemin_utilise', 'layon_debardage', 'limite_vidange', 'roulotte',
-  'cable_ligne', 'cable_mobile', 'cable_support', 'cable_ancrage', 'zone_rajeunissement', 'arbre_habitat', 'annotation'];
+  'cable_ligne', 'cable_mobile', 'cable_support', 'cable_ancrage', 'zone_rajeunissement', 'arbre_habitat', 'annotation',
+  'rubalise', 'element_proteger'];
 
 const b64url = {
   enc: (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
@@ -99,7 +100,8 @@ export async function readPlan(hash) {
       const [lat, lng] = ll(e[1], e[2]);
       const s = { kind, lat, lng };
       let i = 3;
-      if (def.mode === 'wedge' || def.mode === 'orient') s.angle = e[i++];
+      // anciens liens : une bâche était un symbole sans angle (le champ suivant est alors son texte)
+      if ((def.mode === 'wedge' || def.mode === 'orient') && typeof e[i] === 'number') s.angle = e[i++];
       if (e[i] != null) s.text = e[i];
       symbols.push(s);
     }

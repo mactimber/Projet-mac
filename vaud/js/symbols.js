@@ -78,6 +78,9 @@ const POINT_SVG = {
     <text x="20" y="19.5" font-size="11" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#fff">H</text>`],
   // Annotation (A dans un rond noir, texte à côté)
   annotation: [40, 40, '<circle cx="20" cy="20" r="15" fill="#111"/><text x="20" y="26" font-size="17" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif" fill="#fff">A</text>'],
+  // Élément à protéger : losange orange bordé de noir avec « ! » (différent du triopan)
+  element_proteger: [40, 40, `<path d="M20 2.5L37.5 20L20 37.5L2.5 20Z" fill="#f39200" stroke="#111" stroke-width="2.6" stroke-linejoin="round"/>
+    <rect x="18" y="10" width="4" height="15" rx="1.4" fill="#111"/><circle cx="20" cy="29.5" r="2.5" fill="#111"/>`],
   depot: [70, 16, `<rect x="1" y="1" width="68" height="14" fill="#4e3418" stroke="#111" stroke-width="1.5"/>${[6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56, 61, 66].map((x) => `<path d="M${x} 2.5V13.5" stroke="#111" stroke-width="1.7"/>`).join('')}`],
 };
 
@@ -96,6 +99,7 @@ export const SYMBOLS = [
   { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis tournez la poignée ⟳ pour la direction de chute.' },
   { kind: 'arbre_demonter', group: 'Coupe', label: 'Arbre à démonter', mode: 'point', askText: '', hint: 'Touchez l\'arbre à démonter.' },
   { kind: 'arbre_dangereux', group: 'Coupe', label: 'Arbre dangereux', mode: 'point', askText: '', hint: 'Touchez l\'arbre dangereux.' },
+  { kind: 'element_proteger', group: 'Coupe', label: 'Élément à protéger', mode: 'point', askText: '', hint: 'Touchez l\'élément menacé par l\'abattage, puis écrivez ce que c\'est.' },
   { kind: 'arbre_tailler', group: 'Coupe', label: 'Arbre à tailler', mode: 'point', askText: '', hint: 'Touchez l\'arbre à tailler.' },
   { kind: 'debut_vert', group: 'Coupe', label: 'Début du travail (vert)', mode: 'arrow', color: '#2bb24c', hint: 'Touchez le départ, puis glissez la poignée ⟳ dans la direction du travail.' },
   { kind: 'debut_jaune', group: 'Coupe', label: 'Début du travail (jaune)', mode: 'arrow', color: '#f7d000', hint: 'Touchez le départ, puis glissez la poignée ⟳ dans la direction du travail.' },
@@ -129,7 +133,9 @@ export const SYMBOLS = [
   { kind: 'triopan', group: 'Signalisation', label: 'Triopan', mode: 'point', hint: 'Touchez l\'emplacement du Triopan.' },
   { kind: 'trois_lattes', group: 'Signalisation', label: 'Trois lattes', mode: 'point', hint: 'Touchez l\'emplacement des trois lattes.' },
   { kind: 'barriere', group: 'Signalisation', label: 'Barrière', mode: 'point', hint: 'Touchez l\'emplacement de la barrière.' },
-  { kind: 'bache', group: 'Signalisation', label: 'Route fermée', mode: 'point', askText: '', hint: 'Touchez l\'endroit de la fermeture (bâche).' },
+  // orientable comme les piles ; une bâche déjà posée sans angle garde son orientation (angle 90 = horizontal)
+  { kind: 'bache', group: 'Signalisation', label: 'Route fermée', mode: 'orient', askText: '', hint: 'Touchez l\'endroit de la fermeture (bâche), puis tournez la poignée ⟳.' },
+  { kind: 'rubalise', group: 'Signalisation', label: 'Rubalise', mode: 'line', color: '#e31e24', outline: '#fff', weight: 4, dash: '9 7', hint: 'Touchez les points de la rubalise, puis « Terminer ».' },
   { kind: 'texte', group: 'Signalisation', label: 'Texte', mode: 'point', askText: '', hint: 'Touchez la carte pour placer un texte.' },
 ];
 
