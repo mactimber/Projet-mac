@@ -406,6 +406,7 @@ function symbolPopup(s, latlng) {
     ${(def.mode === 'point' || def.mode === 'orient') && !def.coordLabel ? `<button type="button" data-a="text">${s.text ? 'Modifier le texte' : 'Ajouter un texte'}</button>` : ''}
     ${def.mode === 'zone' ? `<div class="sp-coord">${esc(s.text || '')} · ${formatArea(polygonArea(L.polygon(s.pts))).split(' (')[0]}</div><button type="button" data-a="text">Renommer</button><button type="button" data-a="color">Changer la couleur</button>` : ''}
     ${movable ? '<p class="sp-hint">Pour déplacer : glissez le symbole.</p>' : ''}
+    <div class="sp-size"><span>Taille</span><button type="button" data-t="-1" aria-label="Plus petit">−</button><b>${Math.round((s.size || 1) * 100)} %</b><button type="button" data-t="1" aria-label="Plus grand">+</button></div>
     <button type="button" data-a="del" class="danger">Supprimer</button>`;
   const pop = L.popup({ autoPan: true }).setLatLng(movable ? [s.lat, s.lng] : latlng).setContent(div).openOn(map);
   const act = (name, fn) => div.querySelector(`[data-a=${name}]`)?.addEventListener('click', () => {
@@ -415,6 +416,16 @@ function symbolPopup(s, latlng) {
     save();
   });
   act('del', () => { chantier.symbols = chantier.symbols.filter((x) => x !== s); });
+  // Taille du symbole : de 50 % à 300 %, la fenêtre reste ouverte pour régler en plusieurs fois
+  div.querySelectorAll('[data-t]').forEach((b) => b.addEventListener('click', (e) => {
+    L.DomEvent.stop(e);
+    const t = Math.min(3, Math.max(0.5, Math.round(((s.size || 1) + 0.25 * Number(b.dataset.t)) * 100) / 100));
+    if (t === 1) delete s.size;
+    else s.size = t;
+    div.querySelector('.sp-size b').textContent = `${Math.round(t * 100)} %`;
+    drawSymbols();
+    save();
+  }));
   act('center', () => { s.manual = false; autoHeli(chantier); });
   act('text', () => {
     const t = prompt(def.mode === 'zone' ? 'Nom de la zone :' : 'Texte affiché à côté du symbole :', s.text || '');

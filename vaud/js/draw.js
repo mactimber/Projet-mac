@@ -122,7 +122,7 @@ function orientIcon(s, scale = 1) {
 export function symbolLayer(s, opt = {}) {
   const def = SYMBOL_BY_KIND[s.kind];
   if (!def) return null;
-  const scale = opt.scale || 1;
+  const scale = (opt.scale || 1) * (s.size || 1); // s.size : taille choisie pour ce symbole (1 = normale)
   const inter = !!opt.interactive;
 
   if (def.mode === 'point') {
