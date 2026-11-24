@@ -160,8 +160,14 @@ export function symbolLayer(s, opt = {}) {
     const color = s.color || ZONE_COLORS[0];
     L.polygon(pts, { color, weight: 2.5 * scale, dashArray: '7 5', fillColor: color, fillOpacity: 0.18, interactive: inter }).addTo(g);
     if (s.text) {
-      const c = parcelCenter(pts.map(([lat, lng]) => ({ lat, lng }))) || L.polygon(pts).getBounds().getCenter();
-      labelMarker(c, esc(s.text), 'tag-zone', inter, `border-color:${color};color:${color}`).addTo(g);
+      // position choisie à la main (s.labelPos), sinon au milieu de la zone
+      const c = s.labelPos || parcelCenter(pts.map(([lat, lng]) => ({ lat, lng }))) || L.polygon(pts).getBounds().getCenter();
+      const lab = labelMarker(c, esc(s.text), 'tag-zone', inter, `border-color:${color};color:${color}`);
+      if (opt.onLabelMove && inter) {
+        lab.options.draggable = true;
+        lab.on('dragend', () => opt.onLabelMove(lab.getLatLng()));
+      }
+      lab.addTo(g);
     }
     return g;
   }

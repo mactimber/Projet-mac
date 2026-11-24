@@ -365,7 +365,12 @@ function drawSymbols() {
   layerById.clear();
   for (const s of chantier.symbols) {
     const def = SYMBOL_BY_KIND[s.kind];
-    const layer = symbolLayer(s, { interactive: true, draggable: def && ['point', 'wedge', 'orient'].includes(def.mode) });
+    const layer = symbolLayer(s, {
+      interactive: true,
+      draggable: def && ['point', 'wedge', 'orient'].includes(def.mode),
+      // nom d'une zone : on peut le glisser où on veut
+      onLabelMove: (ll) => { s.labelPos = [ll.lat, ll.lng]; save(); },
+    });
     if (!layer) continue;
     layerById.set(s.id, layer);
     layer.on('click', (e) => {
@@ -786,11 +791,7 @@ map.on('click', (e) => {
     } else {
       s.angle = prev?.angle ?? (def.mode === 'orient' ? 90 : 0);
     }
-    if (def.mode === 'orient' && def.askText !== undefined) {
-      const pile = ['pile', 'depot'].includes(def.kind);
-      const t = prompt(pile ? 'Texte à côté de la pile (facultatif, ex. BS ME, Déchi) :' : 'Texte à côté du symbole (facultatif) :', '');
-      s.text = t || '';
-    }
+    // pas de question de texte à la pose : on touche le symbole ensuite pour en ajouter un
     chantier.symbols.push(s);
     rotSel = s;
     drawSymbols();
@@ -826,9 +827,11 @@ map.on('click', (e) => {
 
   // Symbole ponctuel
   const s = { id: uid(), kind: def.kind, lat: ll.lat, lng: ll.lng };
-  if (def.askText !== undefined) {
-    const t = prompt(def.kind === 'texte' ? 'Texte à afficher :' : 'Texte à afficher (facultatif) :', def.askText);
-    if (t === null || (def.kind === 'texte' && !t)) return;
+  // Seul le symbole « Texte » demande son texte à la pose ; pour les autres, on touche le symbole
+  // ensuite (« Ajouter un texte ») si besoin.
+  if (def.kind === 'texte') {
+    const t = prompt('Texte à afficher :', def.askText || '');
+    if (!t) return;
     s.text = t;
   }
   if (def.unique) {

@@ -105,7 +105,7 @@ export const SYMBOLS = [
   { kind: 'abattage', group: 'Coupe', label: 'Direction d\'abattage', mode: 'wedge', hint: 'Touchez l\'arbre, puis tournez la poignée ⟳ pour la direction de chute.' },
   { kind: 'arbre_demonter', group: 'Coupe', label: 'Arbre à démonter', mode: 'point', askText: '', hint: 'Touchez l\'arbre à démonter.' },
   { kind: 'arbre_dangereux', group: 'Coupe', label: 'Arbre dangereux', mode: 'point', askText: '', hint: 'Touchez l\'arbre dangereux.' },
-  { kind: 'element_proteger', group: 'Coupe', label: 'Élément à protéger', mode: 'point', askText: '', hint: 'Touchez l\'élément menacé par l\'abattage, puis écrivez ce que c\'est.' },
+  { kind: 'element_proteger', group: 'Coupe', label: 'Élément à protéger', mode: 'point', askText: '', hint: 'Touchez l\'élément menacé par l\'abattage ; touchez-le ensuite pour écrire ce que c\'est.' },
   { kind: 'arbre_tailler', group: 'Coupe', label: 'Arbre à tailler', mode: 'point', askText: '', hint: 'Touchez l\'arbre à tailler.' },
   { kind: 'debut_vert', group: 'Coupe', label: 'Début du travail (vert)', mode: 'arrow', color: '#2bb24c', hint: 'Touchez le départ, puis glissez la poignée ⟳ dans la direction du travail.' },
   { kind: 'debut_jaune', group: 'Coupe', label: 'Début du travail (jaune)', mode: 'arrow', color: '#f7d000', hint: 'Touchez le départ, puis glissez la poignée ⟳ dans la direction du travail.' },
@@ -134,11 +134,11 @@ export const SYMBOLS = [
   // --- Nature et notes
   { kind: 'zone_rajeunissement', group: 'Nature et notes', label: 'Zone de rajeunissement', mode: 'zone', zoneColor: '#2a9d8f', defaultName: 'Rajeunissement', hint: 'Touchez les coins de la zone, puis « Terminer ».' },
   { kind: 'arbre_habitat', group: 'Nature et notes', label: 'Arbre-habitat à conserver', mode: 'point', askText: '', hint: 'Touchez l\'arbre-habitat.' },
-  { kind: 'annotation', group: 'Nature et notes', label: 'Annotation', mode: 'point', askText: '', hint: 'Touchez la carte, puis écrivez l\'annotation.' },
+  { kind: 'annotation', group: 'Nature et notes', label: 'Annotation', mode: 'point', askText: '', hint: 'Touchez la carte ; touchez ensuite l\'annotation pour écrire son texte.' },
   // --- Signalisation
   { kind: 'triopan', group: 'Signalisation', label: 'Triopan', mode: 'point', hint: 'Touchez l\'emplacement du Triopan.' },
   { kind: 'trois_lattes', group: 'Signalisation', label: 'Trois lattes', mode: 'point', hint: 'Touchez l\'emplacement des trois lattes.' },
-  { kind: 'sentinelle', group: 'Signalisation', label: 'Sentinelle', mode: 'point', askText: '', hint: 'Touchez le poste de la sentinelle (texte facultatif : nom, radio…).' },
+  { kind: 'sentinelle', group: 'Signalisation', label: 'Sentinelle', mode: 'point', askText: '', hint: 'Touchez le poste de la sentinelle (pour un nom ou une radio, touchez-la ensuite).' },
   { kind: 'barriere', group: 'Signalisation', label: 'Barrière', mode: 'point', hint: 'Touchez l\'emplacement de la barrière.' },
   // orientable comme les piles ; une bâche déjà posée sans angle garde son orientation (angle 90 = horizontal)
   { kind: 'bache', group: 'Signalisation', label: 'Route fermée', mode: 'orient', askText: '', hint: 'Touchez l\'endroit de la fermeture (bâche), puis tournez la poignée ⟳.' },
