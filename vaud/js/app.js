@@ -28,10 +28,9 @@ const BASES = [
 const OVERLAYS = [
   { id: 'ch.kantone.cadastralwebmap-farbe', label: 'Cadastre (parcelles)', opacity: 0.85 },
   { id: 'ch.swisstopo.hangneigung-ueber_30', label: 'Pentes raides (> 30°)', opacity: 0.55 },
-  { id: 'ch.swisstopo.swissalti3d-reliefschattierung', label: 'Relief du terrain', opacity: 0.45 },
+  { id: 'ch.swisstopo.swissalti3d-reliefschattierung', label: 'Relief multidirectionnel (swissALTI3D)', opacity: 0.6, attribution: '© swisstopo' },
   { id: 'ch.bfe.elektrische-anlagen_ueber_36', label: 'Lignes électriques', opacity: 0.9 },
   // Ajoutées le 26.11.2026 (désactivées par défaut ; même chargement WMS que les couches ci-dessus)
-  { id: 'ch.swisstopo.swissalti3d-reliefschattierung_multidirektional', label: 'Relief multidirectionnel (swissALTI3D)', opacity: 0.6, attribution: '© swisstopo' },
   { id: 'ch.bafu.landesforstinventar-vegetationshoehenmodell_lidar', label: 'Hauteur de la végétation (Lidar IFN)', opacity: 0.6, attribution: '© OFEV / WSL' },
   {
     id: 'zones-s', label: 'Zones de protection des eaux (S1, S2, S3)', opacity: 0.65,
@@ -60,7 +59,7 @@ map.pm.setLang('fr');
 
 const LS_LAYERS = 'vd-layers';
 const layerState = Object.assign({ base: 'carte', overlays: [] }, JSON.parse(localStorage.getItem(LS_LAYERS) || '{}'));
-layerState.overlays = layerState.overlays.filter((id) => id !== 'ch.bafu.grundwasserschutzzonen');
+layerState.overlays = layerState.overlays.filter((id) => !['ch.bafu.grundwasserschutzzonen', 'ch.swisstopo.swissalti3d-reliefschattierung_multidirektional'].includes(id));
 let baseLayer = null;
 const overlayLayers = {};
 
