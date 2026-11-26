@@ -30,6 +30,9 @@ const OVERLAYS = [
   { id: 'ch.swisstopo.hangneigung-ueber_30', label: 'Pentes raides (> 30°)', opacity: 0.55 },
   { id: 'ch.swisstopo.swissalti3d-reliefschattierung', label: 'Relief du terrain', opacity: 0.45 },
   { id: 'ch.bfe.elektrische-anlagen_ueber_36', label: 'Lignes électriques', opacity: 0.9 },
+  // Ajoutées le 26.11.2026 (désactivées par défaut ; même chargement WMS que les couches ci-dessus)
+  { id: 'ch.swisstopo.swissalti3d-reliefschattierung_multidirektional', label: 'Relief multidirectionnel (swissALTI3D)', opacity: 0.6, attribution: '© swisstopo' },
+  { id: 'ch.bafu.landesforstinventar-vegetationshoehenmodell_lidar', label: 'Hauteur de la végétation (Lidar IFN)', opacity: 0.6, attribution: '© OFEV / WSL' },
   {
     id: 'zones-s', label: 'Zones de protection des eaux (S1, S2, S3)', opacity: 0.65,
     // Couche cantonale vaudoise, puis service intercantonal ; les noms de couches sont lus dans le GetCapabilities.
@@ -47,7 +50,7 @@ const makeBase = (id) => {
 const makeOverlay = (o) => L.tileLayer.wms('https://wms.geo.admin.ch/', {
   layers: o.id, format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512,
   maxZoom: 21, opacity: o.opacity, crossOrigin: 'anonymous', bounds: SWISS.pad(0.1), lang: 'fr',
-  attribution: '© geo.admin.ch',
+  attribution: o.attribution || '© geo.admin.ch',
 });
 
 const map = L.map('map', { center: [46.8, 8.2], zoom: 8, minZoom: 7, maxZoom: 21, maxBounds: SWISS.pad(0.3), zoomControl: false });
